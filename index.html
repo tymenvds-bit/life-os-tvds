@@ -76,6 +76,17 @@ textarea{resize:vertical;line-height:1.6}
 .ai-result{background:#0a1020;border:1px solid #1a3a3a;border-radius:var(--r);padding:10px;margin-top:8px;font-size:12px;color:var(--t2);line-height:1.6;white-space:pre-wrap;max-height:180px;overflow-y:auto}
 .preview-card{background:var(--bg1);border:1px solid var(--b);border-radius:var(--r);padding:10px 12px;margin-bottom:6px}
 .preview-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-family:'DM Mono',monospace}
+.preview-item{display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:1px solid var(--b)}
+.preview-item:last-of-type{border-bottom:none}
+.preview-item .del-btn{background:none;border:none;color:var(--t3);cursor:pointer;font-size:13px;padding:2px 4px;flex-shrink:0;line-height:1}
+.preview-item .del-btn:hover{color:var(--red)}
+.preview-item .pi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.preview-card input,.preview-card select,.preview-card textarea{background:var(--bg2);border:1px solid var(--b);color:var(--t);border-radius:4px;padding:3px 6px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none}
+.preview-card input:focus,.preview-card select:focus,.preview-card textarea:focus{border-color:var(--gold)}
+.preview-card select{width:auto;min-width:80px}
+.preview-card input[type=number]{width:60px}
+.preview-card textarea{width:100%;min-height:40px;resize:vertical;line-height:1.5}
+.preview-subtitle{font-size:10px;color:var(--t3);font-style:italic;margin-bottom:6px}
 
 /* LISTS */
 .list{display:flex;flex-direction:column;gap:4px}
@@ -501,6 +512,7 @@ function isOverdue(t){return t.due && t.due<TODAY && getStatus(t)!=='done';}
 const TODAY = new Date().toISOString().split('T')[0];
 const MOODS = ['','😞','😕','😐','🙂','😊'];
 let calEvents = [];
+let captureData = null;
 
 // ═══ STATE ═══
 let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[]};
@@ -588,22 +600,40 @@ async function capture(mode='standard'){
   const pre=document.getElementById('cap-preview');
   res.style.display='none';pre.style.display='none';
 
+  // Build list of existing open tasks for AI to match against
+  const openTasks=DB.todos.filter(t=>getStatus(t)!=='done').slice(0,50).map(t=>({id:t.id,title:t.title,category:t.category,status:getStatus(t)}));
+  const taskList=openTasks.map((t,i)=>`#${i+1} [id:${t.id}] "${t.title}" (${t.category}, ${t.status})`).join('\n');
+  const NOW_TIME=new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+
   let sys=`You are a personal assistant for Tijmen van der Schyff, CEO of Prima Joinery, Pretoria.
 Extract ALL items from the input. Return ONLY valid JSON with no markdown, no code fences, no explanation.
-Today: ${TODAY}.
+Today: ${TODAY}. Current time: ${NOW_TIME}.
 
-Return object with only these keys that have data:
-{"todos":[{"title":"","category":"prima-ops|prima-strategy|prima-finance|vehicle|personal|family|finance|learning|admin|faith","priority":"urgent|high|normal|low","due":"YYYY-MM-DD or empty","notes":""}],
-"notes":[{"title":"","body":"","category":"prima-ops","tags":[]}],
-"time":[{"title":"","category":"","start":"HH:MM","end":"HH:MM","date":"YYYY-MM-DD"}],
-"journal":[{"body":"","mood":"3","tags":[]}],
+EXISTING OPEN TASKS (match these by TOPIC, not exact title):
+${taskList||'(no open tasks)'}
+
+Return object with these keys (omit empty arrays):
+{"task_updates":[{"id":"EXACT_ID_FROM_LIST","progress":"what was done","status":"open|in-progress|waiting|done","due":"YYYY-MM-DD or null to keep"}],
+"todos":[{"title":"","category":"prima-ops|prima-strategy|prima-finance|vehicle|personal|family|finance|learning|admin|faith","priority":"urgent|high|normal|low","due":"YYYY-MM-DD or empty","notes":""}],
+"notes":[{"title":"","body":"detailed content","category":"prima-ops","tags":[]}],
+"time":[{"title":"","category":"","duration":MINUTES,"date":"YYYY-MM-DD"}],
+"journal":[{"body":"","mood":"1-5","tags":[]}],
 "calendar":[{"title":"","date":"YYYY-MM-DD","time":"HH:MM","notes":""}],
 "fuel":[{"vehicle":"GQ|GU","odometer":0,"litres":0,"cost_per_l":0,"station":"","date":"YYYY-MM-DD"}],
-"summary":"one sentence"}
+"summary":"one sentence summary"}
 
-Rules: journal=feelings/reflections, notes=decisions/meeting outcomes, todos=future actions, time=past activities with times, fuel=fill-ups, calendar=future scheduled events.`;
+CRITICAL RULES:
+- task_updates: FIRST scan the input for ANY mention of work related to an existing task above. Match by TOPIC — if user says "wrote the MR DIY letter" match the task about MR DIY. Use the EXACT id value from the matched task. Set progress (what was done today), status (waiting=ball in someone else's court, in-progress=actively working on it, done=fully completed), and optionally new due date.
+- todos: ONLY for genuinely NEW action items that do NOT relate to any existing task above. Before adding a todo, verify it does not match any existing task topic. If in doubt, prefer task_updates.
+- time: Past activities. Use TOTAL DURATION in minutes only. Do NOT guess specific clock start/end times. Just estimate how long the activity took (e.g. 30, 60, 90 minutes).
+- journal: ALWAYS generate exactly one journal entry. Infer mood (1=terrible, 2=bad, 3=neutral, 4=good, 5=great) from the overall tone. Write a brief 2-3 sentence reflection summarizing the day's wins, challenges, and emotional state — even if the user didn't explicitly journal.
+- notes: Reference information ONLY — decisions made, meeting outcomes, specs, prices, contacts, factual info worth preserving. Notes are NOT action items (those are todos). Only create a note when there is specific factual/reference content to save.
+- calendar: Future scheduled events ONLY when the user provides BOTH a specific date AND a specific time. If either is missing or vague, create a todo with a due date instead.
+- fuel: Vehicle fill-ups only.
 
-  if(mode==='eod') sys+='\nEND OF DAY: Prioritise time blocks (past tense), journal reflections.';
+FINAL CHECK: Review your todos array. For each item, confirm it does NOT match any existing task by topic. If it does, move it to task_updates instead.`;
+
+  if(mode==='eod') sys+='\nEND OF DAY MODE: This is an end-of-day brain dump. Prioritise: (1) task_updates for work done today, (2) time blocks for activities, (3) journal reflection on the day, (4) new todos for items mentioned that are not in the existing task list.';
   if(mode==='whatsapp') sys+='\nWHATSAPP: Extract action items as todos, scheduled things as calendar.';
   if(mode==='fuel') sys+='\nFUEL: Focus on fuel data — litres, price, odometer, station.';
 
@@ -626,20 +656,138 @@ Rules: journal=feelings/reflections, notes=decisions/meeting outcomes, todos=fut
 }
 
 function buildPreview(parsed){
+  captureData=parsed;
   const pre=document.getElementById('cap-preview');
   let html='';
-  if(parsed.todos?.length){
-    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--gold)">✅ ${parsed.todos.length} task${parsed.todos.length>1?'s':''}</div>`;
-    parsed.todos.forEach(t=>{html+=`<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--b);color:var(--t2)">${PRI[t.priority]?.l||''} ${esc(t.title)}</div>`;});
+  const statusOpts=s=>Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===s?'selected':''}>${v.label}</option>`).join('');
+  const priOpts=s=>Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${k===s?'selected':''}>${v.l}</option>`).join('');
+  const catOpts=s=>Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===s?'selected':''}>${v.emoji} ${v.label}</option>`).join('');
+
+  // Task updates
+  if(parsed.task_updates?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--teal)">🔄 ${parsed.task_updates.length} task update${parsed.task_updates.length>1?'s':''}</div>`;
+    parsed.task_updates.forEach((u,i)=>{
+      const t=DB.todos.find(t=>t.id==u.id);
+      html+=`<div class="preview-item" data-section="task_updates" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('task_updates',${i})">✕</button>
+        <div class="pi-body">
+          <div style="font-weight:500;font-size:12px;color:var(--t)">${t?esc(t.title):'Unknown task'}</div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+            <select data-field="status" style="font-size:11px">${statusOpts(u.status||'in-progress')}</select>
+            <input data-field="progress" value="${esc(u.progress||'')}" placeholder="Progress note..." style="flex:1;min-width:150px">
+          </div>
+        </div>
+      </div>`;
+    });
     html+='</div>';
   }
-  if(parsed.notes?.length){html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">📝 ${parsed.notes.length} note${parsed.notes.length>1?'s':''}</div>${parsed.notes.map(n=>`<div style="font-size:12px;color:var(--t2)">${esc(n.title)}</div>`).join('')}</div>`;}
-  if(parsed.time?.length){html+=`<div class="preview-card"><div class="preview-title" style="color:var(--green)">⏱ ${parsed.time.length} time block${parsed.time.length>1?'s':''}</div>${parsed.time.map(b=>`<div style="font-size:12px;color:var(--t2)">${b.start}–${b.end} ${esc(b.title)}</div>`).join('')}</div>`;}
-  if(parsed.journal?.length){html+=`<div class="preview-card"><div class="preview-title" style="color:var(--pink)">📖 Journal entry</div><div style="font-size:12px;color:var(--t2)">${esc((parsed.journal[0].body||'').slice(0,100))}…</div></div>`;}
-  if(parsed.fuel?.length){html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">⛽ ${parsed.fuel.length} fuel fill${parsed.fuel.length>1?'s':''}</div>${parsed.fuel.map(f=>`<div style="font-size:12px;color:var(--t2)">${f.vehicle} ${f.litres}L @ R${f.cost_per_l}/L</div>`).join('')}</div>`;}
-  if(parsed.calendar?.length){html+=`<div class="preview-card"><div class="preview-title" style="color:var(--teal)">📅 ${parsed.calendar.length} event${parsed.calendar.length>1?'s':''}</div>${parsed.calendar.map(e=>`<div style="font-size:12px;color:var(--t2)">${e.date} ${e.time||''} ${esc(e.title)}</div>`).join('')}</div>`;}
+
+  // New todos
+  if(parsed.todos?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--gold)">✅ ${parsed.todos.length} new task${parsed.todos.length>1?'s':''}</div>`;
+    parsed.todos.forEach((t,i)=>{
+      html+=`<div class="preview-item" data-section="todos" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('todos',${i})">✕</button>
+        <div class="pi-body">
+          <input data-field="title" value="${esc(t.title)}" style="font-weight:500;width:100%">
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <select data-field="priority">${priOpts(t.priority||'normal')}</select>
+            <select data-field="category">${catOpts(t.category||'prima-ops')}</select>
+            <input data-field="due" type="date" value="${t.due||''}" style="width:130px">
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  // Notes
+  if(parsed.notes?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">📝 ${parsed.notes.length} note${parsed.notes.length>1?'s':''}</div>`;
+    html+=`<div class="preview-subtitle">Decisions, meeting outcomes, reference info</div>`;
+    parsed.notes.forEach((n,i)=>{
+      html+=`<div class="preview-item" data-section="notes" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('notes',${i})">✕</button>
+        <div class="pi-body">
+          <input data-field="title" value="${esc(n.title)}" style="font-weight:500;width:100%">
+          <textarea data-field="body" rows="2">${esc(n.body||'')}</textarea>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  // Time blocks
+  if(parsed.time?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--green)">⏱ ${parsed.time.length} time block${parsed.time.length>1?'s':''}</div>`;
+    parsed.time.forEach((b,i)=>{
+      html+=`<div class="preview-item" data-section="time" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('time',${i})">✕</button>
+        <div class="pi-body">
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+            <input data-field="duration" type="number" value="${b.duration||0}" min="1" style="width:55px" title="Minutes">
+            <span style="font-size:11px;color:var(--t3)">min</span>
+            <input data-field="title" value="${esc(b.title)}" style="flex:1;min-width:120px">
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  // Journal
+  if(parsed.journal?.length){
+    const j=parsed.journal[0];
+    html+=`<div class="preview-card" data-section="journal" data-index="0"><div class="preview-title" style="color:var(--pink)">📖 Journal entry</div>
+      <div class="preview-item" style="border-bottom:none">
+        <button class="del-btn" onclick="removePreviewItem('journal',0)">✕</button>
+        <div class="pi-body">
+          <div style="display:flex;gap:4px;margin-bottom:4px">${[1,2,3,4,5].map(m=>`<button class="btn btn-sm pi-mood" data-mood="${m}" onclick="document.querySelectorAll('.pi-mood').forEach(b=>b.style.background='');this.style.background='var(--bg3)'" style="font-size:14px;padding:3px 8px;${+j.mood===m?'background:var(--bg3)':''}">${MOODS[m]}</button>`).join('')}</div>
+          <textarea data-field="body" rows="3">${esc(j.body||'')}</textarea>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Fuel
+  if(parsed.fuel?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">⛽ ${parsed.fuel.length} fuel fill${parsed.fuel.length>1?'s':''}</div>`;
+    parsed.fuel.forEach((f,i)=>{
+      html+=`<div class="preview-item" data-section="fuel" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('fuel',${i})">✕</button>
+        <div class="pi-body">
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:12px">
+            <select data-field="vehicle"><option ${f.vehicle==='GQ'?'selected':''}>GQ</option><option ${f.vehicle==='GU'?'selected':''}>GU</option></select>
+            <input data-field="litres" type="number" value="${f.litres||''}" placeholder="L" style="width:55px">
+            <span style="color:var(--t3)">L @</span>
+            <input data-field="cost_per_l" type="number" value="${f.cost_per_l||''}" placeholder="R/L" step="0.01" style="width:65px">
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  // Calendar
+  if(parsed.calendar?.length){
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--teal)">📅 ${parsed.calendar.length} event${parsed.calendar.length>1?'s':''}</div>`;
+    parsed.calendar.forEach((e,i)=>{
+      html+=`<div class="preview-item" data-section="calendar" data-index="${i}">
+        <button class="del-btn" onclick="removePreviewItem('calendar',${i})">✕</button>
+        <div class="pi-body">
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+            <input data-field="title" value="${esc(e.title)}" style="flex:1;min-width:120px">
+            <input data-field="date" type="date" value="${e.date||''}" style="width:130px">
+            <input data-field="time" type="time" value="${e.time||''}" style="width:90px">
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+
   if(html){
-    html+=`<div style="display:flex;gap:7px;margin-top:7px"><button class="btn btn-primary" style="flex:1" onclick="commitCapture(${esc(JSON.stringify(JSON.stringify(parsed)))})">✅ Save All</button><button class="btn btn-sm" onclick="document.getElementById('cap-preview').style.display='none'">Cancel</button></div>`;
+    html+=`<div style="display:flex;gap:7px;margin-top:7px"><button class="btn btn-primary" style="flex:1" onclick="collectPreviewEdits();commitCapture()">✅ Save All</button><button class="btn btn-sm" onclick="captureData=null;document.getElementById('cap-preview').style.display='none'">Cancel</button></div>`;
     pre.innerHTML=html;pre.style.display='block';
   } else {
     document.getElementById('cap-result').textContent='Nothing recognisable found. Try more detail.';
@@ -647,15 +795,61 @@ function buildPreview(parsed){
   }
 }
 
-async function commitCapture(jsonStr){
+function removePreviewItem(section,index){
+  if(!captureData||!captureData[section])return;
+  captureData[section].splice(index,1);
+  if(!captureData[section].length) delete captureData[section];
+  buildPreview(captureData);
+}
+
+function collectPreviewEdits(){
+  if(!captureData)return;
+  document.querySelectorAll('.preview-item[data-section]').forEach(el=>{
+    const sec=el.dataset.section,idx=+el.dataset.index;
+    if(!captureData[sec]||!captureData[sec][idx])return;
+    const item=captureData[sec][idx];
+    el.querySelectorAll('[data-field]').forEach(inp=>{
+      const f=inp.dataset.field;
+      if(inp.type==='number') item[f]=+inp.value;
+      else item[f]=inp.value;
+    });
+  });
+  // Journal mood from button selection
+  if(captureData.journal?.length){
+    const sel=document.querySelector('.pi-mood[style*="bg3"]');
+    if(sel) captureData.journal[0].mood=sel.dataset.mood;
+  }
+}
+
+async function commitCapture(){
   try{
-  const p=JSON.parse(jsonStr);
+  const p=captureData;
+  if(!p){toast('Nothing to save');return;}
   setSyncBadge('pending');
   const added=[];
-  if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso(),status:'open',progress:''};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' tasks');}
-  if(p.notes?.length){for(const n of p.notes){const r={id:uid(),...n,tags:(n.tags||[]).join(','),createdAt:niso(),updatedAt:niso()};DB.notes.unshift(r);await apiPost('append','Notes',{row:r});}added.push(p.notes.length+' notes');}
-  if(p.time?.length){for(const b of p.time){const s=new Date(`${b.date||TODAY}T${b.start}`),e=new Date(`${b.date||TODAY}T${b.end}`);const r={id:uid(),date:b.date||TODAY,...b,duration:Math.round((e-s)/60000),createdAt:niso()};DB.time.unshift(r);await apiPost('append','Time',{row:r});}added.push(p.time.length+' time blocks');}
-  if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:(j.tags||[]).join(','),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
+  if(p.task_updates?.length){
+    let upd=0;
+    for(const u of p.task_updates){
+      const t=DB.todos.find(t=>t.id==u.id);if(!t)continue;
+      const patch={};
+      if(u.progress){
+        const entry=TODAY+': '+u.progress;
+        t.progress=t.progress?(t.progress+'\n'+entry):entry;
+        patch.progress=t.progress;
+      }
+      if(u.status&&STATUS[u.status]){
+        t.status=u.status;t.done=u.status==='done'?'1':'0';
+        patch.status=u.status;patch.done=t.done;
+      }
+      if(u.due!==undefined&&u.due!==null){t.due=u.due;patch.due=u.due;}
+      if(Object.keys(patch).length){await apiPost('update','Todos',{id:u.id,patch});upd++;}
+    }
+    if(upd) added.push(upd+' tasks updated');
+  }
+  if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso(),status:'open',progress:''};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' new tasks');}
+  if(p.notes?.length){for(const n of p.notes){const r={id:uid(),...n,tags:Array.isArray(n.tags)?n.tags.join(','):(n.tags||''),createdAt:niso(),updatedAt:niso()};DB.notes.unshift(r);await apiPost('append','Notes',{row:r});}added.push(p.notes.length+' notes');}
+  if(p.time?.length){for(const b of p.time){const r={id:uid(),date:b.date||TODAY,title:b.title||'',category:b.category||'admin',start:'',end:'',duration:b.duration||0,createdAt:niso()};DB.time.unshift(r);await apiPost('append','Time',{row:r});}added.push(p.time.length+' time blocks');}
+  if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:Array.isArray(j.tags)?j.tags.join(','):(j.tags||''),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
   if(p.fuel?.length){for(const f of p.fuel){const sheet=f.vehicle==='GU'?'GU_Patrol':'GQ_Patrol';const kml=f.odometer&&f.litres?(f.odometer/f.litres).toFixed(2):'';const r={id:uid(),date:f.date||TODAY,type:'fuel',odometer:f.odometer||'',litres:f.litres||'',cost_per_l:f.cost_per_l||'',total_cost:f.litres&&f.cost_per_l?(f.litres*f.cost_per_l).toFixed(2):'',km_l:kml,notes:f.station||''};if(sheet==='GQ_Patrol')DB.gq_patrol.unshift(r);else DB.gu_patrol.unshift(r);await apiPost('append',sheet,{row:r});}added.push(p.fuel.length+' fuel entries');}
   if(p.calendar?.length){
     let calOk=0;
@@ -666,6 +860,7 @@ async function commitCapture(jsonStr){
     if(calOk) added.push(calOk+' calendar events');
     calEvents=await calFetch(14);
   }
+  captureData=null;
   setSyncBadge('ok');
   document.getElementById('cap-preview').style.display='none';
   document.getElementById('cap-input').value='';
@@ -921,7 +1116,7 @@ function renderTimeLog(){
   else if(bars)bars.innerHTML='';
   const list=document.getElementById('time-list');if(!list)return;
   if(!blocks.length){list.innerHTML='<div class="empty"><div class="empty-icon">⏱</div>No time logged</div>';return;}
-  list.innerHTML=blocks.map(b=>{const cat=CATS[b.category]||CATS.admin;return`<div class="time-block" style="border-left-color:${cat.color}"><span style="font-size:16px;flex-shrink:0">${cat.emoji}</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.title)}</div><div style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">${b.start||''}–${b.end||''} · <strong style="color:var(--gold)">${fmtDur(+b.duration)}</strong></div></div><button class="btn-icon" onclick="delTimeBlock(${b.id})">🗑</button></div>`;}).join('');
+  list.innerHTML=blocks.map(b=>{const cat=CATS[b.category]||CATS.admin;return`<div class="time-block" style="border-left-color:${cat.color}"><span style="font-size:16px;flex-shrink:0">${cat.emoji}</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.title)}</div><div style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">${b.start&&b.end?b.start+'–'+b.end+' · ':''}<strong style="color:var(--gold)">${fmtDur(+b.duration)}</strong></div></div><button class="btn-icon" onclick="delTimeBlock(${b.id})">🗑</button></div>`;}).join('');
 }
 function delTimeBlock(id){DB.time=DB.time.filter(b=>b.id!=id);apiPost('delete','Time',{id});renderTimeLog();updateStats();}
 
@@ -1179,7 +1374,11 @@ function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[
 async function initApp(){
   document.getElementById('setup').style.display='none';
   document.getElementById('app').style.display='flex';
-  document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  function updateHeaderTime(){
+    const now=new Date();
+    document.getElementById('hdr-date').textContent=now.toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' \u2022 '+now.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+  }
+  updateHeaderTime();setInterval(updateHeaderTime,30000);
   // Inject cat options into selects
   document.querySelectorAll('select[id$="-cat"],#q-cat,#t-cat,#tm-cat,#tr-cat').forEach(sel=>{if(!sel.options.length)sel.innerHTML=catOptions();});
   document.getElementById('tm-date')&&(document.getElementById('tm-date').value=TODAY);

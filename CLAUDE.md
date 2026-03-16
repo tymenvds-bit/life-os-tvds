@@ -19,9 +19,9 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Tab | Sheet | Description |
 |-----|-------|-------------|
-| Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown |
+| Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown. Capture AI matches brain dump items to existing tasks via `task_updates`. |
 | Notes | Notes | Freeform notes with categories and tags |
-| Time | Time | Time tracking with live timer |
+| Time | Time | Time tracking with live timer; duration-based blocks from capture (no start/end required) |
 | Journal | Journal | Daily journal with mood tracking |
 | Vehicles | GQ_Patrol, GU_Patrol | Fuel/service/repair logs for two vehicles |
 | Home | HomeInventory | Household item tracking |
@@ -48,8 +48,11 @@ Personal life operating system for Tijmen van der Schyff.
 - `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
 - `calFetch(days)` / `calCreate(ev)` — Google Calendar API (via Apps Script)
 - `claude(prompt, system, max)` — Claude API call
-- `capture(mode)` — AI-powered natural language capture; routes to todos, notes, time, journal, calendar, fuel
-- `commitCapture(jsonStr)` — saves all captured items including calendar events
+- `capture(mode)` — AI-powered natural language capture; sends existing open tasks to AI for matching; routes to task_updates, todos, notes, time, journal, calendar, fuel
+- `buildPreview(parsed)` — renders editable preview with inline fields and delete buttons; stores data in `captureData` global
+- `collectPreviewEdits()` — reads edited values from preview DOM back into `captureData` before saving
+- `removePreviewItem(section, index)` — removes an item from preview and re-renders
+- `commitCapture()` — saves all captured items from `captureData`; handles task_updates (progress + status), new todos, notes, duration-based time blocks, journal, fuel, calendar events
 - `renderAll()` — re-renders all tabs
 - `cycleStatus(id)` / `setTaskStatus(id, status)` — cycle or set task status (open → in-progress → waiting → done)
 - `addProgress(id)` — add timestamped progress note to a task
