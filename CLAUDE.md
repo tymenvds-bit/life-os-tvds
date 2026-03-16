@@ -26,7 +26,7 @@ Personal life operating system for Tijmen van der Schyff.
 | Vehicles | GQ_Patrol, GU_Patrol | Fuel/service/repair logs for two vehicles |
 | Home | HomeInventory | Household item tracking |
 | Prima Stock | PrimaStock | Business stock/inventory |
-| Calendar | — | Schedule/event view |
+| Calendar | Google Calendar API | Live events from Google Calendar; create via capture or Quick Event |
 
 ## Deployment
 
@@ -45,9 +45,26 @@ Personal life operating system for Tijmen van der Schyff.
 ## Key Functions
 
 - `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
+- `calFetch(days)` / `calCreate(ev)` — Google Calendar API (via Apps Script)
 - `claude(prompt, system, max)` — Claude API call
-- `capture(mode)` — AI-powered natural language capture
+- `capture(mode)` — AI-powered natural language capture; routes to todos, notes, time, journal, calendar, fuel
+- `commitCapture(jsonStr)` — saves all captured items including calendar events
 - `renderAll()` — re-renders all tabs
 - `esc(s)` — HTML-escape strings (XSS prevention)
 - `uid()` — generate unique IDs
 - `toast(msg)` — show notification
+
+## Backend API Actions (api.gs)
+
+| Action | Method | Description |
+|--------|--------|-------------|
+| `read` | GET | Read rows from a sheet |
+| `ping` | GET | Health check |
+| `calendar` | GET | List Google Calendar events (`?days=14`) |
+| `append` | POST | Add a row to a sheet |
+| `write` | POST | Overwrite all rows in a sheet |
+| `update` | POST | Update a row by ID |
+| `delete` | POST | Delete a row by ID |
+| `upsert` | POST | Update or insert a row |
+| `cal_create` | POST | Create a Google Calendar event |
+| `cal_delete` | POST | Delete a Google Calendar event |
