@@ -482,20 +482,7 @@ const CATS = {
 const PRI = {urgent:{c:'#d44',l:'🔴 Urgent'},high:{c:'#c87832',l:'🟠 High'},normal:{c:'#4a8ab5',l:'🔵 Normal'},low:{c:'#555',l:'⚪ Low'}};
 const TODAY = new Date().toISOString().split('T')[0];
 const MOODS = ['','😞','😕','😐','🙂','😊'];
-const CAL_EVENTS = [
-  {t:'Prima 2026 (Teams)',d:'2026-03-17',tm:'10:00',c:'#4a8ab5'},
-  {t:'Technibook meeting',d:'2026-03-17',tm:'10:00',c:'#4a8ab5'},
-  {t:'Oom Manie ete',d:'2026-03-17',tm:'17:00',c:'#5a9060'},
-  {t:'Breakfast with Guest',d:'2026-03-18',tm:'08:00',c:'#4a8ab5'},
-  {t:'G3 Meeting',d:'2026-03-18',tm:'10:00',c:'#4a8ab5'},
-  {t:'Erastus meeting',d:'2026-03-18',tm:'14:00',c:'#4a8ab5'},
-  {t:'Dating Anniversary 🎉',d:'2026-03-18',tm:'All day',c:'#b55a7a'},
-  {t:'PSG Wealth Aanbieding',d:'2026-03-19',tm:'18:00',c:'#5a9060'},
-  {t:'Meter Lesings',d:'2026-03-20',tm:'07:00',c:'#4a8ab5'},
-  {t:'Marriage Anniversary 🎉',d:'2026-03-21',tm:'All day',c:'#b55a7a'},
-  {t:'Hennops 4x4 🚙',d:'2026-03-21',tm:'08:00',c:'#b55a7a'},
-  {t:'Human Rights Day 🇿🇦',d:'2026-03-21',tm:'Holiday',c:'#c9a84c'},
-];
+let calEvents = [];
 
 // ═══ STATE ═══
 let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[]};
@@ -528,6 +515,22 @@ async function apiPost(action,sheet,data){
   }catch{return{ok:false,local:true};}
 }
 
+async function calFetch(days=14){
+  if(!CFG.apiUrl) return [];
+  try{
+    const r=await fetch(`${CFG.apiUrl}?action=calendar&days=${days}`);
+    const d=await r.json();
+    return d.events||[];
+  }catch{return [];}
+}
+async function calCreate(ev){
+  if(!CFG.apiUrl){toast('Connect Google Sheets API to sync calendar');return null;}
+  try{
+    const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cal_create',event:ev})});
+    return await r.json();
+  }catch{return{error:'offline'};}
+}
+
 async function loadAll(){
   setSyncBadge('pending');
   const sheets=['todos','notes','time','journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock'];
@@ -540,6 +543,7 @@ async function loadAll(){
     else if(s==='PrimaStock') DB.prima_stock=rows;
     else DB[key]=rows;
   }));
+  calEvents=await calFetch(14);
   setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
 
@@ -634,12 +638,20 @@ async function commitCapture(jsonStr){
   if(p.time?.length){for(const b of p.time){const s=new Date(`${b.date||TODAY}T${b.start}`),e=new Date(`${b.date||TODAY}T${b.end}`);const r={id:uid(),date:b.date||TODAY,...b,duration:Math.round((e-s)/60000),createdAt:niso()};DB.time.unshift(r);await apiPost('append','Time',{row:r});}added.push(p.time.length+' time blocks');}
   if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:(j.tags||[]).join(','),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
   if(p.fuel?.length){for(const f of p.fuel){const sheet=f.vehicle==='GU'?'GU_Patrol':'GQ_Patrol';const kml=f.odometer&&f.litres?(f.odometer/f.litres).toFixed(2):'';const r={id:uid(),date:f.date||TODAY,type:'fuel',odometer:f.odometer||'',litres:f.litres||'',cost_per_l:f.cost_per_l||'',total_cost:f.litres&&f.cost_per_l?(f.litres*f.cost_per_l).toFixed(2):'',km_l:kml,notes:f.station||''};if(sheet==='GQ_Patrol')DB.gq_patrol.unshift(r);else DB.gu_patrol.unshift(r);await apiPost('append',sheet,{row:r});}added.push(p.fuel.length+' fuel entries');}
+  if(p.calendar?.length){
+    let calOk=0;
+    for(const ev of p.calendar){
+      const res=await calCreate({title:ev.title,date:ev.date||TODAY,time:ev.time||'',duration:ev.duration||60,description:ev.notes||'',allDay:!ev.time||ev.time==='All day'});
+      if(res&&res.ok) calOk++;
+    }
+    if(calOk) added.push(calOk+' calendar events');
+    calEvents=await calFetch(14);
+  }
   setSyncBadge('ok');
   document.getElementById('cap-preview').style.display='none';
   document.getElementById('cap-input').value='';
   renderAll();
   toast('Saved: '+added.join(', '));
-  if(p.calendar?.length) toast('📅 '+p.calendar.length+' calendar event(s) — go to Calendar tab to create');
 }
 
 // ═══ TODOS ═══
@@ -888,9 +900,15 @@ function renderCalendar(){
     <div class="today-stat"><div class="today-val" style="color:var(--red)">${DB.todos.filter(t=>t.done!=='1'&&t.priority==='urgent').length}</div><div class="today-lbl">Urgent</div></div>
     <div class="today-stat"><div class="today-val" style="color:var(--blue)">${DB.todos.filter(t=>t.done!=='1').length}</div><div class="today-lbl">Open tasks</div></div>
     <div class="today-stat"><div class="today-val">💌</div><div class="today-lbl">Anniv. Sat!</div></div>`;
-  const grouped={};CAL_EVENTS.forEach(e=>{if(!grouped[e.d])grouped[e.d]=[];grouped[e.d].push(e);});
+  const grouped={};calEvents.forEach(e=>{const d=e.date;if(!grouped[d])grouped[d]=[];grouped[d].push(e);});
   const cl=document.getElementById('cal-list');
-  if(cl)cl.innerHTML=Object.keys(grouped).sort().map(d=>`<div class="cal-date-label">${fmtDate(d)}${d===TODAY?' · TODAY':''}</div>${grouped[d].map(e=>`<div class="cal-event" style="border-left-color:${e.c}"><span class="cal-time">${e.tm}</span><span style="flex:1;font-size:12px">${esc(e.t)}</span></div>`).join('')}`).join('');
+  if(cl){
+    if(!calEvents.length){
+      cl.innerHTML='<div class="empty"><div class="empty-icon">📅</div>No events'+(CFG.apiUrl?'':'<div style="font-size:11px;margin-top:4px">Connect Google Sheets API to see your Google Calendar</div>')+'</div>';
+    } else {
+      cl.innerHTML=Object.keys(grouped).sort().map(d=>`<div class="cal-date-label">${fmtDate(d)}${d===TODAY?' · TODAY':''}</div>${grouped[d].map(e=>`<div class="cal-event" style="border-left-color:${e.allDay?'var(--gold)':'var(--blue)'}"><span class="cal-time">${e.start||''}</span><span style="flex:1;font-size:12px">${esc(e.title)}</span></div>`).join('')}`).join('');
+    }
+  }
   const cp=document.getElementById('cal-priority');
   if(cp){const items=DB.todos.filter(t=>t.done!=='1'&&(t.priority==='urgent'||t.priority==='high')).slice(0,5);cp.innerHTML=items.length?items.map(t=>`<div class="cal-event" style="border-left-color:${PRI[t.priority]?.c||'#555'};margin-bottom:3px"><span style="font-size:14px">${CATS[t.category]?.emoji||'📋'}</span><div style="flex:1;min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</div></div></div>`).join(''):'<div class="empty" style="padding:12px">No urgent tasks ✅</div>';}
   document.getElementById('ev-date') && (document.getElementById('ev-date').value=TODAY);
@@ -900,7 +918,15 @@ async function createCalEvent(){
   const date=document.getElementById('ev-date').value;
   const time=document.getElementById('ev-time').value;
   if(!title||!date){toast('Enter title and date');return;}
-  toast(`📅 Event "${title}" — ask Claude in chat to create this in Google Calendar`);
+  toast('Creating event…');
+  const res=await calCreate({title,date,time:time||'',duration:60,allDay:!time});
+  if(res&&res.ok){
+    calEvents=await calFetch(14);
+    renderCalendar();
+    toast('📅 Event created in Google Calendar');
+  } else {
+    toast('Could not create event — check API connection');
+  }
   document.getElementById('ev-title').value='';
 }
 
@@ -1034,7 +1060,7 @@ function switchTab(tab){
   document.getElementById('pane-'+tab).classList.add('active');
   document.getElementById('tab-'+tab).classList.add('active');
   if(tab==='time')initTime();
-  if(tab==='calendar')renderCalendar();
+  if(tab==='calendar'){calFetch(14).then(ev=>{calEvents=ev;renderCalendar();});renderCalendar();}
   if(tab==='capture')renderSnapshot();
   if(tab==='vehicles'){document.getElementById('veh-date').value=TODAY;renderVehicles();}
   if(tab==='inventory')renderInventory();

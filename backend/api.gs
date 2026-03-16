@@ -1,19 +1,19 @@
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// LIFE OS TvdS â Apps Script Web App Backend
+// =========================================================
+// LIFE OS TvdS — Apps Script Web App Backend
 // Deploy as: Execute as "Me", Who has access "Anyone"
-// 
+//
 // Instructions:
 // 1. Open your Google Sheet
-// 2. Extensions â Apps Script
+// 2. Extensions → Apps Script
 // 3. Replace all code with this file
-// 4. Click Deploy â New Deployment â Web App
+// 4. Click Deploy → New Deployment → Web App
 // 5. Execute as: Me | Access: Anyone
-// 6. Copy the deployment URL â paste into Life OS settings
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// 6. Copy the deployment URL → paste into Life OS settings
+// =========================================================
 
 const SHEET_ID = '17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s';
 
-// Sheet definitions â columns per tab
+// Sheet definitions — columns per tab
 const SCHEMAS = {
   Todos:         ['id','title','category','priority','due','notes','done','createdAt','aiBreakdown'],
   Notes:         ['id','title','body','category','tags','createdAt','updatedAt'],
@@ -31,6 +31,7 @@ function doGet(e) {
   try {
     if (action === 'read') return jsonResponse(readSheet(sheet));
     if (action === 'ping') return jsonResponse({ ok: true, timestamp: new Date().toISOString() });
+    if (action === 'calendar') return jsonResponse(listCalEvents(e.parameter.days || 14));
   } catch(err) {
     return jsonResponse({ error: err.message });
   }
@@ -40,7 +41,7 @@ function doPost(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); }
   catch { return jsonResponse({ error: 'Invalid JSON' }); }
-  
+
   const { action, sheet } = body;
   try {
     if (action === 'append') return jsonResponse(appendRow(sheet, body.row));
@@ -48,13 +49,15 @@ function doPost(e) {
     if (action === 'update') return jsonResponse(updateRow(sheet, body.id, body.patch));
     if (action === 'delete') return jsonResponse(deleteRow(sheet, body.id));
     if (action === 'upsert') return jsonResponse(upsertRow(sheet, body.row));
+    if (action === 'cal_create') return jsonResponse(createCalEvent(body.event));
+    if (action === 'cal_delete') return jsonResponse(deleteCalEvent(body.eventId));
     return jsonResponse({ error: 'Unknown action: ' + action });
   } catch(err) {
     return jsonResponse({ error: err.message });
   }
 }
 
-// âââ SHEET OPERATIONS âââââââââââââââââââââââââââââââââââ
+// --- SHEET OPERATIONS ---
 
 function getOrCreateSheet(name) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -146,7 +149,66 @@ function jsonResponse(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// âââ UTILITY FUNCTIONS ââââââââââââââââââââââââââââââââââ
+// --- GOOGLE CALENDAR ---
+
+function listCalEvents(days) {
+  var cal = CalendarApp.getDefaultCalendar();
+  var now = new Date();
+  var end = new Date(now.getTime() + (+days) * 86400000);
+  var events = cal.getEvents(now, end);
+  return {
+    events: events.map(function(e) {
+      return {
+        id: e.getId(),
+        title: e.getTitle(),
+        date: fmtCalDate(e.getStartTime()),
+        start: e.isAllDayEvent() ? 'All day' : fmtCalTime(e.getStartTime()),
+        end: e.isAllDayEvent() ? '' : fmtCalTime(e.getEndTime()),
+        allDay: e.isAllDayEvent(),
+        location: e.getLocation() || '',
+        description: e.getDescription() || ''
+      };
+    })
+  };
+}
+
+function createCalEvent(ev) {
+  var cal = CalendarApp.getDefaultCalendar();
+  var event;
+  if (ev.allDay || !ev.time || ev.time === 'All day') {
+    event = cal.createAllDayEvent(ev.title, new Date(ev.date + 'T00:00:00'));
+  } else {
+    var startStr = ev.date + 'T' + ev.time + ':00';
+    var durMin = +ev.duration || 60;
+    var start = new Date(startStr);
+    var end = new Date(start.getTime() + durMin * 60000);
+    event = cal.createEvent(ev.title, start, end);
+  }
+  if (ev.location) event.setLocation(ev.location);
+  if (ev.description) event.setDescription(ev.description);
+  return { ok: true, id: event.getId(), title: ev.title };
+}
+
+function deleteCalEvent(eventId) {
+  try {
+    var cal = CalendarApp.getDefaultCalendar();
+    var event = cal.getEventById(eventId);
+    if (event) { event.deleteEvent(); return { ok: true }; }
+    return { error: 'Event not found' };
+  } catch(err) {
+    return { error: err.message };
+  }
+}
+
+function fmtCalDate(d) {
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function fmtCalTime(d) {
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm');
+}
+
+// --- UTILITY FUNCTIONS ---
 
 // Call this manually to set up all sheet tabs at once
 function setupAllSheets() {
@@ -161,18 +223,18 @@ function loadMondayTasks() {
     {id:1742120001,title:'Draft MR DIY settlement letter',category:'prima-finance',priority:'urgent',due:'2026-03-16',notes:'R1.65M+ outstanding. Structured settlement offer.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120002,title:'Ask Alicia to compile supplier payment list',category:'prima-finance',priority:'urgent',due:'2026-03-16',notes:'Need list before drafting deferral mails.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120003,title:'Draft Technibook meeting brief for tomorrow',category:'prima-finance',priority:'urgent',due:'2026-03-16',notes:'Xero BS accuracy, CoA redesign, Alicia allocation rules.',done:'0',createdAt:now,aiBreakdown:''},
-    {id:1742120004,title:'Send Santi staff ratings â short-time or retrenchment prep',category:'prima-ops',priority:'urgent',due:'2026-03-16',notes:'Section 189 â do not delay.',done:'0',createdAt:now,aiBreakdown:''},
+    {id:1742120004,title:'Send Santi staff ratings — short-time or retrenchment prep',category:'prima-ops',priority:'urgent',due:'2026-03-16',notes:'Section 189 — do not delay.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120005,title:'Decide on electrical inspection R36 000 (COC + surge protection)',category:'prima-finance',priority:'high',due:'2026-03-17',notes:'Required by insurer. Risk: policy lapse if deferred.',done:'0',createdAt:now,aiBreakdown:''},
-    {id:1742120006,title:'Follow up landlord â building space surrender meeting',category:'prima-finance',priority:'high',due:'2026-03-17',notes:'Kevin Padayachee / Soretha, Fort Knox / Investicore.',done:'0',createdAt:now,aiBreakdown:''},
+    {id:1742120006,title:'Follow up landlord — building space surrender meeting',category:'prima-finance',priority:'high',due:'2026-03-17',notes:'Kevin Padayachee / Soretha, Fort Knox / Investicore.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120007,title:'Quote: Awwthentic',category:'prima-ops',priority:'high',due:'',notes:'',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120008,title:'Quote: Pick n Pay Pod',category:'prima-ops',priority:'high',due:'',notes:'',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120009,title:'Quote: Plato',category:'prima-ops',priority:'high',due:'',notes:'',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120010,title:'Invoice Dischem',category:'prima-finance',priority:'high',due:'2026-03-16',notes:'Send immediately.',done:'0',createdAt:now,aiBreakdown:''},
-    {id:1742120011,title:'Oasis Pod â confirm billable and invoice',category:'prima-finance',priority:'high',due:'2026-03-16',notes:'Finished but never collected.',done:'0',createdAt:now,aiBreakdown:''},
-    {id:1742120012,title:'Call Pieer â joint site visits Wonderboom and Greenside',category:'prima-ops',priority:'high',due:'2026-03-17',notes:'Problems at both sites.',done:'0',createdAt:now,aiBreakdown:''},
+    {id:1742120011,title:'Oasis Pod — confirm billable and invoice',category:'prima-finance',priority:'high',due:'2026-03-16',notes:'Finished but never collected.',done:'0',createdAt:now,aiBreakdown:''},
+    {id:1742120012,title:'Call Pieer — joint site visits Wonderboom and Greenside',category:'prima-ops',priority:'high',due:'2026-03-17',notes:'Problems at both sites.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120013,title:'Arrange vinyl for House Strachan',category:'prima-ops',priority:'normal',due:'',notes:'Coordinate delivery and install.',done:'0',createdAt:now,aiBreakdown:''},
     {id:1742120014,title:'Order vinyl for H&H East Rand Mall',category:'prima-ops',priority:'normal',due:'',notes:'Place order for install schedule.',done:'0',createdAt:now,aiBreakdown:''},
-    {id:1742120015,title:'KFC sites â measure and survey for quoting',category:'prima-ops',priority:'normal',due:'',notes:'Schedule visits and take measurements.',done:'0',createdAt:now,aiBreakdown:''},
+    {id:1742120015,title:'KFC sites — measure and survey for quoting',category:'prima-ops',priority:'normal',due:'',notes:'Schedule visits and take measurements.',done:'0',createdAt:now,aiBreakdown:''},
   ];
   writeAll('Todos', todos);
   Logger.log('Loaded ' + todos.length + ' tasks into Todos sheet');
