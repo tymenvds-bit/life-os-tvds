@@ -41,6 +41,7 @@ Personal life operating system for Tijmen van der Schyff.
 - All data persists to localStorage first, then syncs to Google Sheets.
 - Escape all user input with `esc()` before rendering as HTML.
 - Test changes by opening `index.html` directly in a browser or via GitHub Pages.
+- **After every significant change:** update this file (CLAUDE.md) to reflect new modules, functions, API actions, or architecture changes. This file must always match the current state of the codebase.
 
 ## Key Functions
 
