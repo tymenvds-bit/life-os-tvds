@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0d0d">
+<title>Life OS TvdS</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>/* Life OS TvdS v2 */
+:root{--bg:#0d0d0d;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--b:#242424;--b2:#2e2e2e;--t:#e8e8e8;--t2:#999;--t3:#555;--gold:#c9a84c;--gold2:#e8c96b;--red:#d44;--orange:#c87832;--blue:#4a8ab5;--green:#5a9060;--pink:#b55a7a;--teal:#3a8a8a;--r:8px;--rl:12px}
+</style>
+</head>
+<body>
+<div id="setup" class="setup" style="display:none">
+  <div class="setup-logo">LIFE OS</div>
+  <div class="setup-card">
+    <input id="s-api" placeholder="Apps Script URL">
+    <input id="s-key" type="password" placeholder="sk-ant-...">
+    <button onclick="completeSetup()">Connect</button>
+    <button onclick="skipSetup()">Local mode</button>
+  </div>
+</div>
+<div id="app" class="app" style="display:none">
+  <div class="hdr">
+    <span class="logo">LIFE OS</span>
+    <span id="hdr-date"></span>
+    <span id="sync-badge" class="sync-badge sync-offline">offline</span>
+    <span id="s-urgent">0</span>
+    <span id="s-tasks">0</span>
+    <span id="s-hrs">0h</span>
+    <button onclick="openSettings()">Settings</button>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('capture')" id="tab-capture">Capture</button>
+    <button class="tab" onclick="switchTab('todos')" id="tab-todos">Tasks</button>
+    <button class="tab" onclick="switchTab('notes')" id="tab-notes">Notes</button>
+    <button class="tab" onclick="switchTab('time')" id="tab-time">Time</button>
+    <button class="tab" onclick="switchTab('journal')" id="tab-journal">Journal</button>
+    <button class="tab" onclick="switchTab('calendar')" id="tab-calendar">Calendar</button>
+    <button class="tab" onclick="switchTab('vehicles')" id="tab-vehicles">Vehicles</button>
+    <button class="tab" onclick="switchTab('inventory')" id="tab-inventory">Inventory</button>
+  </div>
+  <div class="content">
+    <div id="pane-capture" class="pane active"><p>Capture tab - full app loads here</p></div>
+    <div id="pane-todos" class="pane"></div>
+    <div id="pane-notes" class="pane"></div>
+    <div id="pane-time" class="pane"></div>
+    <div id="pane-journal" class="pane"></div>
+    <div id="pane-calendar" class="pane"></div>
+    <div id="pane-vehicles" class="pane"></div>
+    <div id="pane-inventory" class="pane"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+const TODAY = new Date().toISOString().split('T')[0];
+const LS = {get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+let CFG = {apiUrl:'',apiKey:'',mode:''};
+function completeSetup(){CFG={apiUrl:document.getElementById('s-api').value.trim(),apiKey:document.getElementById('s-key').value.trim(),mode:'sheets'};LS.set('los_cfg',CFG);initApp();}
+function skipSetup(){CFG={apiUrl:'',apiKey:'',mode:'local'};LS.set('los_cfg',CFG);initApp();}
+function initApp(){document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+function switchTab(t){document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));document.getElementById('pane-'+t).classList.add('active');document.getElementById('tab-'+t).classList.add('active');}
+function openSettings(){alert('Settings: API URL = '+CFG.apiUrl);}
+function setSyncBadge(s){const el=document.getElementById('sync-badge');if(el)el.textContent=s;}
+window.onload=()=>{CFG=LS.get('los_cfg',{apiUrl:'',apiKey:'',mode:''});if(!CFG.mode){document.getElementById('setup').style.display='flex';}else{initApp();}}
+</script>
+</body>
+</html>
