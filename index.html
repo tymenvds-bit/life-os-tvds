@@ -510,7 +510,7 @@ async function apiPost(action,sheet,data){
   LS.set('los_'+sheet.toLowerCase(), action==='delete' ? DB[sheet.toLowerCase().replace('_patrol','_patrol')]?.filter(r=>r.id!=data.id)||[] : data.rows||[...LS.get('los_'+sheet.toLowerCase(),[]),data.row||{}]);
   if(!CFG.apiUrl) return {ok:true,local:true};
   try{
-    const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,sheet,...data})});
+    const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,sheet,...data})});
     return await r.json();
   }catch{return{ok:false,local:true};}
 }
@@ -526,11 +526,8 @@ async function calFetch(days=14){
 async function calCreate(ev){
   if(!CFG.apiUrl){toast('Connect Google Sheets API to sync calendar');return null;}
   try{
-    console.log('calCreate sending:',JSON.stringify(ev));
-    const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cal_create',event:ev})});
-    const txt=await r.text();
-    console.log('calCreate response:',txt);
-    try{return JSON.parse(txt);}catch{return{error:txt};}
+    const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'cal_create',event:ev})});
+    return await r.json();
   }catch(e){console.error('calCreate error:',e);toast('Calendar error: '+e.message);return{error:'offline'};}
 }
 
@@ -634,11 +631,7 @@ function buildPreview(parsed){
 
 async function commitCapture(jsonStr){
   try{
-  console.log('commitCapture called, jsonStr type:',typeof jsonStr);
-  console.log('commitCapture jsonStr:',jsonStr);
   const p=JSON.parse(jsonStr);
-  console.log('commitCapture parsed:',JSON.stringify(p));
-  console.log('commitCapture p.calendar:',p.calendar);
   setSyncBadge('pending');
   const added=[];
   if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso()};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' tasks');}
@@ -647,17 +640,14 @@ async function commitCapture(jsonStr){
   if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:(j.tags||[]).join(','),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
   if(p.fuel?.length){for(const f of p.fuel){const sheet=f.vehicle==='GU'?'GU_Patrol':'GQ_Patrol';const kml=f.odometer&&f.litres?(f.odometer/f.litres).toFixed(2):'';const r={id:uid(),date:f.date||TODAY,type:'fuel',odometer:f.odometer||'',litres:f.litres||'',cost_per_l:f.cost_per_l||'',total_cost:f.litres&&f.cost_per_l?(f.litres*f.cost_per_l).toFixed(2):'',km_l:kml,notes:f.station||''};if(sheet==='GQ_Patrol')DB.gq_patrol.unshift(r);else DB.gu_patrol.unshift(r);await apiPost('append',sheet,{row:r});}added.push(p.fuel.length+' fuel entries');}
   if(p.calendar?.length){
-    console.log('Calendar section reached, events:',p.calendar.length);
     let calOk=0;
     for(const ev of p.calendar){
-      console.log('Creating cal event:',ev);
       const res=await calCreate({title:ev.title,date:ev.date||TODAY,time:ev.time||'',duration:ev.duration||60,description:ev.notes||'',allDay:!ev.time||ev.time==='All day'});
-      console.log('Cal create result:',res);
       if(res&&res.ok) calOk++; else toast('Cal error: '+(res?.error||'unknown'));
     }
     if(calOk) added.push(calOk+' calendar events');
     calEvents=await calFetch(14);
-  } else { console.log('No calendar items in parsed data. Keys:', Object.keys(p)); }
+  }
   setSyncBadge('ok');
   document.getElementById('cap-preview').style.display='none';
   document.getElementById('cap-input').value='';
