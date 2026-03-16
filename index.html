@@ -526,9 +526,12 @@ async function calFetch(days=14){
 async function calCreate(ev){
   if(!CFG.apiUrl){toast('Connect Google Sheets API to sync calendar');return null;}
   try{
+    console.log('calCreate sending:',JSON.stringify(ev));
     const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cal_create',event:ev})});
-    return await r.json();
-  }catch{return{error:'offline'};}
+    const txt=await r.text();
+    console.log('calCreate response:',txt);
+    try{return JSON.parse(txt);}catch{return{error:txt};}
+  }catch(e){console.error('calCreate error:',e);toast('Calendar error: '+e.message);return{error:'offline'};}
 }
 
 async function loadAll(){
@@ -641,8 +644,10 @@ async function commitCapture(jsonStr){
   if(p.calendar?.length){
     let calOk=0;
     for(const ev of p.calendar){
+      console.log('Creating cal event:',ev);
       const res=await calCreate({title:ev.title,date:ev.date||TODAY,time:ev.time||'',duration:ev.duration||60,description:ev.notes||'',allDay:!ev.time||ev.time==='All day'});
-      if(res&&res.ok) calOk++;
+      console.log('Cal create result:',res);
+      if(res&&res.ok) calOk++; else toast('Cal error: '+(res?.error||'unknown'));
     }
     if(calOk) added.push(calOk+' calendar events');
     calEvents=await calFetch(14);
