@@ -547,7 +547,7 @@ async function loadAll(){
 async function claude(prompt,system,max=1000){
   if(!CFG.apiKey) throw new Error('No API key');
   const r=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',headers:{'Content-Type':'application/json'},
+    method:'POST',headers:{'Content-Type':'application/json','x-api-key':CFG.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:max,
       system:system||`You are Tijmen van der Schyff's assistant. CEO Prima Joinery Pretoria. Be direct and practical. Today: ${TODAY}.`,
       messages:[{role:'user',content:prompt}]})
