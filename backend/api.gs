@@ -155,7 +155,8 @@ function jsonResponse(data) {
 function listCalEvents(days) {
   var cal = CalendarApp.getDefaultCalendar();
   var now = new Date();
-  var end = new Date(now.getTime() + (+days) * 86400000);
+  var d = Number(days) || 14;
+  var end = new Date(now.getTime() + d * 86400000);
   var events = cal.getEvents(now, end);
   return {
     events: events.map(function(e) {
