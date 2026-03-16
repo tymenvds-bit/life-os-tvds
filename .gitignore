@@ -1,0 +1,5 @@
+API KEY.txt
+*.key
+.env
+.claude/
+node_modules/
