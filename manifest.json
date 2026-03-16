@@ -1,0 +1,14 @@
+{
+    "name": "Life OS TvdS",
+    "short_name": "Life OS",
+    "description": "Personal life operating system — Tijmen van der Schyff",
+    "start_url": "/life-os-tvds/",
+    "display": "standalone",
+    "background_color": "#0d0d0d",
+    "theme_color": "#c9a84c",
+    "orientation": "any",
+    "icons": [
+          { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+          { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    ]
+}
