@@ -26,12 +26,13 @@ const SCHEMAS = {
 };
 
 function doGet(e) {
-  const action = e.parameter.action || 'read';
-  const sheet  = e.parameter.sheet  || 'Todos';
+  const p = (e && e.parameter) || {};
+  const action = p.action || 'read';
+  const sheet  = p.sheet  || 'Todos';
   try {
     if (action === 'read') return jsonResponse(readSheet(sheet));
     if (action === 'ping') return jsonResponse({ ok: true, timestamp: new Date().toISOString() });
-    if (action === 'calendar') return jsonResponse(listCalEvents(e.parameter.days || 14));
+    if (action === 'calendar') return jsonResponse(listCalEvents(p.days || 14));
   } catch(err) {
     return jsonResponse({ error: err.message });
   }
