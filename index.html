@@ -633,7 +633,12 @@ function buildPreview(parsed){
 }
 
 async function commitCapture(jsonStr){
+  try{
+  console.log('commitCapture called, jsonStr type:',typeof jsonStr);
+  console.log('commitCapture jsonStr:',jsonStr);
   const p=JSON.parse(jsonStr);
+  console.log('commitCapture parsed:',JSON.stringify(p));
+  console.log('commitCapture p.calendar:',p.calendar);
   setSyncBadge('pending');
   const added=[];
   if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso()};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' tasks');}
@@ -642,6 +647,7 @@ async function commitCapture(jsonStr){
   if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:(j.tags||[]).join(','),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
   if(p.fuel?.length){for(const f of p.fuel){const sheet=f.vehicle==='GU'?'GU_Patrol':'GQ_Patrol';const kml=f.odometer&&f.litres?(f.odometer/f.litres).toFixed(2):'';const r={id:uid(),date:f.date||TODAY,type:'fuel',odometer:f.odometer||'',litres:f.litres||'',cost_per_l:f.cost_per_l||'',total_cost:f.litres&&f.cost_per_l?(f.litres*f.cost_per_l).toFixed(2):'',km_l:kml,notes:f.station||''};if(sheet==='GQ_Patrol')DB.gq_patrol.unshift(r);else DB.gu_patrol.unshift(r);await apiPost('append',sheet,{row:r});}added.push(p.fuel.length+' fuel entries');}
   if(p.calendar?.length){
+    console.log('Calendar section reached, events:',p.calendar.length);
     let calOk=0;
     for(const ev of p.calendar){
       console.log('Creating cal event:',ev);
@@ -651,12 +657,13 @@ async function commitCapture(jsonStr){
     }
     if(calOk) added.push(calOk+' calendar events');
     calEvents=await calFetch(14);
-  }
+  } else { console.log('No calendar items in parsed data. Keys:', Object.keys(p)); }
   setSyncBadge('ok');
   document.getElementById('cap-preview').style.display='none';
   document.getElementById('cap-input').value='';
   renderAll();
   toast('Saved: '+added.join(', '));
+  }catch(err){console.error('commitCapture ERROR:',err);toast('Save error: '+err.message);}
 }
 
 // ═══ TODOS ═══
