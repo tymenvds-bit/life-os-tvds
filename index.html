@@ -89,6 +89,18 @@ textarea{resize:vertical;line-height:1.6}
 .meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .todo-expanded{border-top:1px solid var(--b);margin-top:7px;padding-top:7px;font-size:12px;color:var(--t2);line-height:1.5}
 .ai-sub{background:#0a1020;border:1px solid #1a2a4a;border-radius:6px;padding:8px;margin-top:6px;font-size:12px;color:var(--t2);white-space:pre-wrap;line-height:1.6}
+.status-pill{display:inline-flex;align-items:center;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;user-select:none;letter-spacing:.3px;font-family:'DM Mono',monospace}
+.status-open{background:#4a8ab522;color:#4a8ab5}
+.status-in-progress{background:#c9a84c22;color:#c9a84c}
+.status-waiting{background:#b55a7a22;color:#b55a7a}
+.status-done{background:#5a906022;color:#5a9060}
+.overdue-tag{background:#d4440022;color:#d44;font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;font-family:'DM Mono',monospace}
+.progress-log{margin-top:6px;font-size:11px;color:var(--t3);line-height:1.6}
+.progress-log .p-entry{padding:3px 0;border-bottom:1px solid var(--b)}
+.progress-log .p-date{color:var(--gold);font-family:'DM Mono',monospace;font-size:10px;margin-right:6px}
+.progress-input{display:flex;gap:6px;margin-top:8px}
+.progress-input input{flex:1;font-size:12px;padding:6px 8px}
+.progress-input button{flex-shrink:0}
 
 /* FILTERS */
 .filters{display:flex;gap:5px;flex-wrap:wrap}
@@ -274,6 +286,8 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         <button class="fbtn active" onclick="setFilter('all',this)">All</button>
         <button class="fbtn" onclick="setFilter('active',this)">Active</button>
         <button class="fbtn" onclick="setFilter('urgent',this)">🔴 Urgent</button>
+        <button class="fbtn" onclick="setFilter('waiting',this)">⏳ Waiting</button>
+        <button class="fbtn" onclick="setFilter('overdue',this)">🔥 Overdue</button>
         <button class="fbtn" onclick="setFilter('prima-finance',this)">💰 Finance</button>
         <button class="fbtn" onclick="setFilter('prima-ops',this)">🏭 Ops</button>
         <button class="fbtn" onclick="setFilter('vehicle',this)">🚙 Vehicle</button>
@@ -480,6 +494,10 @@ const CATS = {
   'faith':         {label:'Faith',           emoji:'✝️',color:'#9a8050'},
 };
 const PRI = {urgent:{c:'#d44',l:'🔴 Urgent'},high:{c:'#c87832',l:'🟠 High'},normal:{c:'#4a8ab5',l:'🔵 Normal'},low:{c:'#555',l:'⚪ Low'}};
+const STATUS = {open:{label:'Open',cls:'status-open'},['in-progress']:{label:'In Progress',cls:'status-in-progress'},waiting:{label:'Waiting',cls:'status-waiting'},done:{label:'Done',cls:'status-done'}};
+const STATUS_ORDER = ['open','in-progress','waiting','done'];
+function getStatus(t){if(t.status && STATUS[t.status]) return t.status; return t.done==='1'?'done':'open';}
+function isOverdue(t){return t.due && t.due<TODAY && getStatus(t)!=='done';}
 const TODAY = new Date().toISOString().split('T')[0];
 const MOODS = ['','😞','😕','😐','🙂','😊'];
 let calEvents = [];
@@ -634,7 +652,7 @@ async function commitCapture(jsonStr){
   const p=JSON.parse(jsonStr);
   setSyncBadge('pending');
   const added=[];
-  if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso()};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' tasks');}
+  if(p.todos?.length){for(const t of p.todos){const r={id:uid(),...t,done:'0',createdAt:niso(),status:'open',progress:''};DB.todos.unshift(r);await apiPost('append','Todos',{row:r});}added.push(p.todos.length+' tasks');}
   if(p.notes?.length){for(const n of p.notes){const r={id:uid(),...n,tags:(n.tags||[]).join(','),createdAt:niso(),updatedAt:niso()};DB.notes.unshift(r);await apiPost('append','Notes',{row:r});}added.push(p.notes.length+' notes');}
   if(p.time?.length){for(const b of p.time){const s=new Date(`${b.date||TODAY}T${b.start}`),e=new Date(`${b.date||TODAY}T${b.end}`);const r={id:uid(),date:b.date||TODAY,...b,duration:Math.round((e-s)/60000),createdAt:niso()};DB.time.unshift(r);await apiPost('append','Time',{row:r});}added.push(p.time.length+' time blocks');}
   if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:(j.tags||[]).join(','),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
@@ -660,7 +678,7 @@ async function commitCapture(jsonStr){
 function addTodo(){
   const title=document.getElementById('t-title').value.trim();
   if(!title){toast('Enter a title');return;}
-  const t={id:uid(),title,category:document.getElementById('t-cat').value,priority:document.getElementById('t-pri').value,due:document.getElementById('t-due').value,notes:document.getElementById('t-notes').value,done:'0',createdAt:niso()};
+  const t={id:uid(),title,category:document.getElementById('t-cat').value,priority:document.getElementById('t-pri').value,due:document.getElementById('t-due').value,notes:document.getElementById('t-notes').value,done:'0',createdAt:niso(),status:'open',progress:''};
   DB.todos.unshift(t);
   apiPost('append','Todos',{row:t});
   document.getElementById('t-title').value='';document.getElementById('t-notes').value='';
@@ -668,12 +686,40 @@ function addTodo(){
 }
 function quickAdd(){
   const title=document.getElementById('q-title').value.trim();if(!title)return;
-  const t={id:uid(),title,category:document.getElementById('q-cat').value,priority:document.getElementById('q-pri').value,due:'',notes:'',done:'0',createdAt:niso()};
+  const t={id:uid(),title,category:document.getElementById('q-cat').value,priority:document.getElementById('q-pri').value,due:'',notes:'',done:'0',createdAt:niso(),status:'open',progress:''};
   DB.todos.unshift(t);apiPost('append','Todos',{row:t});
   document.getElementById('q-title').value='';renderTodos();updateStats();renderSnapshot();toast('Task added');
 }
 function setFilter(f,btn){todoFilter=f;document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTodos();}
-function toggleTodo(id){const t=DB.todos.find(t=>t.id==id);if(!t)return;t.done=t.done==='1'?'0':'1';apiPost('update','Todos',{id,patch:{done:t.done}});renderTodos();updateStats();}
+function toggleTodo(id){
+  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  if(getStatus(t)==='done'){t.done='0';t.status='open';}
+  else{t.done='1';t.status='done';}
+  apiPost('update','Todos',{id,patch:{done:t.done,status:t.status}});renderTodos();updateStats();
+}
+function cycleStatus(id){
+  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const cur=getStatus(t);
+  const idx=STATUS_ORDER.indexOf(cur);
+  const next=STATUS_ORDER[(idx+1)%STATUS_ORDER.length];
+  t.status=next;t.done=next==='done'?'1':'0';
+  apiPost('update','Todos',{id,patch:{status:next,done:t.done}});renderTodos();updateStats();
+  toast('Status → '+STATUS[next].label);
+}
+function addProgress(id){
+  const input=document.getElementById('prog-'+id);if(!input)return;
+  const text=input.value.trim();if(!text)return;
+  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const entry=TODAY+': '+text;
+  t.progress=t.progress?(t.progress+'\n'+entry):entry;
+  apiPost('update','Todos',{id,patch:{progress:t.progress}});
+  input.value='';renderTodos();toast('Progress logged');
+}
+function updateDue(id,newDue){
+  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  t.due=newDue;
+  apiPost('update','Todos',{id,patch:{due:newDue}});renderTodos();toast('Due date updated');
+}
 function deleteTodo(id){DB.todos=DB.todos.filter(t=>t.id!=id);apiPost('delete','Todos',{id});renderTodos();updateStats();}
 function expandTodo(id){expandedTodo=expandedTodo==id?null:id;renderTodos();}
 async function aiBreakdown(id){
@@ -685,23 +731,36 @@ async function aiBreakdown(id){
 function renderTodos(){
   const el=document.getElementById('todo-list');if(!el)return;
   let items=[...DB.todos];
-  if(todoFilter==='active') items=items.filter(t=>t.done!=='1');
-  else if(todoFilter==='done') items=items.filter(t=>t.done==='1');
-  else if(todoFilter==='urgent') items=items.filter(t=>t.done!=='1'&&t.priority==='urgent');
-  else if(todoFilter!=='all') items=items.filter(t=>t.category===todoFilter&&t.done!=='1');
-  items.sort((a,b)=>{if((a.done==='1')!==(b.done==='1'))return(a.done==='1')-1;const po={urgent:0,high:1,normal:2,low:3};return(po[a.priority]||2)-(po[b.priority]||2);});
+  if(todoFilter==='active') items=items.filter(t=>getStatus(t)!=='done');
+  else if(todoFilter==='done') items=items.filter(t=>getStatus(t)==='done');
+  else if(todoFilter==='urgent') items=items.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent');
+  else if(todoFilter==='waiting') items=items.filter(t=>getStatus(t)==='waiting');
+  else if(todoFilter==='overdue') items=items.filter(t=>isOverdue(t));
+  else if(todoFilter!=='all') items=items.filter(t=>t.category===todoFilter&&getStatus(t)!=='done');
+  items.sort((a,b)=>{
+    const ad=getStatus(a)==='done',bd=getStatus(b)==='done';
+    if(ad!==bd) return ad?1:-1;
+    const ao=isOverdue(a),bo=isOverdue(b);
+    if(ao!==bo) return ao?-1:1;
+    const po={urgent:0,high:1,normal:2,low:3};
+    return(po[a.priority]||2)-(po[b.priority]||2);
+  });
   if(!items.length){el.innerHTML='<div class="empty"><div class="empty-icon">✅</div>No tasks here</div>';return;}
   el.innerHTML=items.map(t=>{
-    const cat=CATS[t.category]||CATS.admin;const p=PRI[t.priority]||PRI.normal;const exp=expandedTodo==t.id;const done=t.done==='1';
-    return `<div class="todo-item" style="border-left-color:${p.c};opacity:${done?.55:1}">
+    const cat=CATS[t.category]||CATS.admin;const p=PRI[t.priority]||PRI.normal;const exp=expandedTodo==t.id;
+    const st=getStatus(t);const stInfo=STATUS[st];const done=st==='done';const overdue=isOverdue(t);
+    const progressEntries=(t.progress||'').split('\n').filter(Boolean);
+    return `<div class="todo-item" style="border-left-color:${overdue?'var(--red)':p.c};opacity:${done?.55:1}${overdue?';border-left-width:4px':''}">
       <div class="todo-row">
         <div class="check ${done?'done':''}" onclick="toggleTodo(${t.id})">${done?'✓':''}</div>
         <div class="todo-body" onclick="expandTodo(${t.id})">
           <div class="todo-title ${done?'done':''}">${esc(t.title)}</div>
           <div class="meta">
+            <span class="status-pill ${stInfo.cls}" onclick="event.stopPropagation();cycleStatus(${t.id})" title="Click to change status">${stInfo.label}</span>
             <span class="tag" style="background:${cat.color}22;color:${cat.color}">${cat.emoji} ${cat.label}</span>
             <span class="tag" style="background:${p.c}22;color:${p.c}">${p.l}</span>
-            ${t.due?`<span style="font-size:10px;color:var(--t3)">Due ${fmtDate(t.due)}</span>`:''}
+            ${overdue?'<span class="overdue-tag">🔥 Overdue</span>':''}
+            ${t.due?`<span style="font-size:10px;color:${overdue?'var(--red)':'var(--t3)'}">Due ${fmtDate(t.due)}</span>`:''}
           </div>
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0">
@@ -709,9 +768,32 @@ function renderTodos(){
           <button class="btn-icon" onclick="deleteTodo(${t.id})">🗑</button>
         </div>
       </div>
-      ${exp?`<div class="todo-expanded">${t.notes?`<p style="margin-bottom:5px">${esc(t.notes)}</p>`:''} ${t.aiBreakdown?`<div class="ai-sub"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:3px;font-family:'DM Mono',monospace">AI Sub-tasks</div>${esc(t.aiBreakdown)}</div>`:''}<div style="color:var(--t3);font-size:10px;margin-top:5px">Created ${fmtDate(t.createdAt)}</div></div>`:''}
+      ${exp?`<div class="todo-expanded">
+        ${t.notes?`<p style="margin-bottom:5px">${esc(t.notes)}</p>`:''}
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">STATUS:</span>
+          ${STATUS_ORDER.map(s=>`<span class="status-pill ${STATUS[s].cls}" style="${s===st?'outline:1px solid currentColor':''};cursor:pointer" onclick="event.stopPropagation();setTaskStatus(${t.id},'${s}')">${STATUS[s].label}</span>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">DUE:</span>
+          <input type="date" value="${t.due||''}" style="width:140px;padding:4px 6px;font-size:11px" onchange="updateDue(${t.id},this.value)">
+        </div>
+        ${progressEntries.length?`<div class="progress-log"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:4px;font-family:'DM Mono',monospace">Progress Log</div>${progressEntries.map(e=>{const [date,...rest]=e.split(': ');return `<div class="p-entry"><span class="p-date">${esc(date)}</span>${esc(rest.join(': '))}</div>`;}).join('')}</div>`:''}
+        <div class="progress-input">
+          <input id="prog-${t.id}" placeholder="Log progress… e.g. Drafted letter, sent to attorney" onkeydown="if(event.key==='Enter')addProgress(${t.id})">
+          <button class="btn btn-sm" onclick="addProgress(${t.id})">+ Log</button>
+        </div>
+        ${t.aiBreakdown?`<div class="ai-sub"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:3px;font-family:'DM Mono',monospace">AI Sub-tasks</div>${esc(t.aiBreakdown)}</div>`:''}
+        <div style="color:var(--t3);font-size:10px;margin-top:5px">Created ${fmtDate(t.createdAt)}</div>
+      </div>`:''}
     </div>`;
   }).join('');
+}
+function setTaskStatus(id,status){
+  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  t.status=status;t.done=status==='done'?'1':'0';
+  apiPost('update','Todos',{id,patch:{status,done:t.done}});renderTodos();updateStats();
+  toast('Status → '+STATUS[status].label);
 }
 
 // ═══ NOTES ═══
@@ -1035,8 +1117,8 @@ function delInvItem(id){
 
 // ═══ STATS & RENDER ALL ═══
 function updateStats(){
-  const u=DB.todos.filter(t=>t.done!=='1'&&t.priority==='urgent').length;
-  const o=DB.todos.filter(t=>t.done!=='1').length;
+  const u=DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent').length;
+  const o=DB.todos.filter(t=>getStatus(t)!=='done').length;
   const h=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
   const su=document.getElementById('s-urgent');if(su)su.textContent=u;
   const so=document.getElementById('s-tasks');if(so)so.textContent=o;
@@ -1044,14 +1126,16 @@ function updateStats(){
 }
 function renderSnapshot(){
   const el=document.getElementById('snapshot');if(!el)return;
-  const urgent=DB.todos.filter(t=>t.done!=='1'&&t.priority==='urgent').slice(0,3);
+  const urgent=DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent').slice(0,3);
+  const overdueCount=DB.todos.filter(t=>isOverdue(t)).length;
+  const waitingCount=DB.todos.filter(t=>getStatus(t)==='waiting').length;
   const todayTime=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
   el.innerHTML=`<div class="today-grid" style="margin-bottom:8px">
-    <div class="today-stat"><div class="today-val" style="color:var(--red)">${DB.todos.filter(t=>t.done!=='1'&&t.priority==='urgent').length}</div><div class="today-lbl">Urgent</div></div>
-    <div class="today-stat"><div class="today-val" style="color:var(--gold)">${DB.todos.filter(t=>t.done!=='1').length}</div><div class="today-lbl">Open</div></div>
+    <div class="today-stat"><div class="today-val" style="color:var(--red)">${DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent').length}</div><div class="today-lbl">Urgent</div></div>
+    <div class="today-stat"><div class="today-val" style="color:var(--gold)">${DB.todos.filter(t=>getStatus(t)!=='done').length}</div><div class="today-lbl">Open</div></div>
     <div class="today-stat"><div class="today-val" style="color:var(--blue)">${fmtDur(todayTime)}</div><div class="today-lbl">Logged</div></div>
     <div class="today-stat"><div class="today-val">${DB.journal.filter(j=>j.date===TODAY).length>0?'✓':'–'}</div><div class="today-lbl">Journal</div></div>
-  </div>${urgent.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:5px;font-family:'DM Mono',monospace">🔴 Urgent today</div>${urgent.map(t=>`<div style="padding:5px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}</div>`).join('')}`:''}`;
+  </div>${overdueCount?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:5px;font-family:'DM Mono',monospace">🔥 ${overdueCount} overdue</div>`:''}${waitingCount?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--pink);margin-bottom:5px;font-family:'DM Mono',monospace">⏳ ${waitingCount} waiting</div>`:''}${urgent.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:5px;font-family:'DM Mono',monospace">🔴 Urgent today</div>${urgent.map(t=>`<div style="padding:5px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}${isOverdue(t)?' <span class="overdue-tag">overdue</span>':''}</div>`).join('')}`:''}`;
 }
 function renderAll(){renderTodos();renderNotes();renderJournalSidebar();renderTimeLog();renderCalendar();renderInventory();renderVehicles();renderSnapshot();updateStats();}
 

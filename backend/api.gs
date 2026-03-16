@@ -15,7 +15,7 @@ const SHEET_ID = '17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s';
 
 // Sheet definitions — columns per tab
 const SCHEMAS = {
-  Todos:         ['id','title','category','priority','due','notes','done','createdAt','aiBreakdown'],
+  Todos:         ['id','title','category','priority','due','notes','done','createdAt','aiBreakdown','status','progress'],
   Notes:         ['id','title','body','category','tags','createdAt','updatedAt'],
   Time:          ['id','date','title','category','start','end','duration','notes','createdAt'],
   Journal:       ['id','date','body','mood','tags','createdAt'],

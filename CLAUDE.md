@@ -19,7 +19,7 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Tab | Sheet | Description |
 |-----|-------|-------------|
-| Todos | Todos | Task manager with priorities, categories, due dates, AI breakdown |
+| Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown |
 | Notes | Notes | Freeform notes with categories and tags |
 | Time | Time | Time tracking with live timer |
 | Journal | Journal | Daily journal with mood tracking |
@@ -51,6 +51,10 @@ Personal life operating system for Tijmen van der Schyff.
 - `capture(mode)` — AI-powered natural language capture; routes to todos, notes, time, journal, calendar, fuel
 - `commitCapture(jsonStr)` — saves all captured items including calendar events
 - `renderAll()` — re-renders all tabs
+- `cycleStatus(id)` / `setTaskStatus(id, status)` — cycle or set task status (open → in-progress → waiting → done)
+- `addProgress(id)` — add timestamped progress note to a task
+- `getStatus(t)` — get task status (backward-compatible with legacy `done` field)
+- `isOverdue(t)` — check if task is past due and not done
 - `esc(s)` — HTML-escape strings (XSS prevention)
 - `uid()` — generate unique IDs
 - `toast(msg)` — show notification
