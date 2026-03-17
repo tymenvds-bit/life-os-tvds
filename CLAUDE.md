@@ -279,7 +279,25 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 
 **Sheets**: `Quotes` (id, quote, author, source, tags, reflection, createdAt), `Books` (id, title, author, format, status, startDate, endDate, rating, takeaways, tags)
 
-### 10. Known Bugs / Tech Debt
+### 10. AI Usage & Cost Tracking
+**Context**: Tijmen is heavily invested in AI across multiple platforms and wants visibility into spend and usage patterns.
+
+**Automatic (Life OS API)**:
+- Modify `claude()` function to capture `usage.input_tokens` and `usage.output_tokens` from every API response
+- Store per-call data: date, tokens_in, tokens_out, cost_usd, action (capture/bulk_parse/breakdown)
+- Pricing reference: Sonnet input $3/MTok, output $15/MTok
+- Dashboard widget: today's calls, this week's cost, running total, daily trend
+
+**Manual (monthly AI budget)**:
+- Simple subscription tracker: Claude Pro (~$20), Claude API (variable), Copilot ($10), etc.
+- Monthly total AI spend with trend over time
+- Alert if API spend approaches a user-set threshold
+
+**Limitation**: No API exists to pull usage from Claude.ai subscription, Claude Code, or third-party integrations. Only Life OS API calls can be tracked automatically.
+
+**Sheet**: `AIUsage` (id, date, action, tokens_in, tokens_out, cost_usd, model)
+
+### 11. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
 - Service worker cache: must bump version in `sw.js` on every deploy; users need hard refresh
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)
