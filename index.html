@@ -998,14 +998,16 @@ async function aiFocus(){
   }).join('\n');
   const calToday=calEvents.filter(e=>e.date===TODAY).map(e=>`${e.start} ${e.title}`).join(', ');
   const timeLogged=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
-  const prompt=`Here are my ${tasks.length} open tasks:\n${taskSummary}\n\nToday's calendar: ${calToday||'nothing scheduled'}\nTime already logged today: ${Math.round(timeLogged/60)}h ${timeLogged%60}m\nCurrent time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nDay: ${new Date().toLocaleDateString('en-ZA',{weekday:'long'})}\n\nPick my TOP 3-5 focus tasks for today. Consider: overdue items first, then urgent, then high priority, then what hasn't been touched in a while. Factor in available time remaining today.\n\nReturn ONLY a JSON array of objects: [{"id":TASK_ID,"reason":"brief why this today"}]`;
+  const prompt=`Here are my ${tasks.length} open tasks:\n${taskSummary}\n\nToday's calendar: ${calToday||'nothing scheduled'}\nTime already logged today: ${Math.round(timeLogged/60)}h ${timeLogged%60}m\nCurrent time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nDay: ${new Date().toLocaleDateString('en-ZA',{weekday:'long'})}\n\nPick my TOP 3-5 focus tasks for today. Consider: overdue items first, then urgent, then high priority, then what hasn't been touched in a while. Factor in available time remaining today.\n\nReturn ONLY a JSON array of objects: [{"id":TASK_ID,"title":"exact task title","reason":"brief why this today"}]\nIMPORTANT: id must be the exact number in square brackets from the task list above.`;
   try{
     const raw=await claude(prompt,`You are a productivity assistant. Pick 3-5 focus tasks from the list. Return ONLY valid JSON array, no markdown.`,500);
     const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
     const picks=JSON.parse(clean);
     const el=document.getElementById('focus-list');
+    if(!picks.length){el.innerHTML='<div style="color:var(--t3);font-size:12px">No tasks selected. Try again.</div>';btn.disabled=false;btn.innerHTML='🤖 AI Pick';return;}
     el.innerHTML=picks.map(p=>{
-      const t=tasks.find(t=>t.id==p.id);if(!t)return'';
+      const t=tasks.find(t=>t.id==p.id)||tasks.find(t=>t.title.toLowerCase().includes((p.title||'').toLowerCase().slice(0,20)));
+      if(!t)return`<div style="padding:4px 0;font-size:12px;color:var(--t3)">⚠ Could not match: ${esc(p.title||p.reason||'unknown')}</div>`;
       const cat=CATS[t.category]||CATS.admin;const pri=PRI[t.priority]||PRI.normal;
       return `<div style="padding:6px 0;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:8px">
         <div class="check ${getStatus(t)==='done'?'done':''}" onclick="toggleTodo(${t.id})">${getStatus(t)==='done'?'✓':''}</div>
@@ -1040,7 +1042,9 @@ async function aiNextTask(){
     );
     const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
     const pick=JSON.parse(clean);
-    document.getElementById('next-suggestion').innerHTML=`<strong>${esc(pick.title)}</strong> <span style="color:var(--t3)">— ${esc(pick.reason)}</span>`;
+    const matched=tasks.find(t=>t.id==pick.id)||tasks.find(t=>t.title.toLowerCase().includes((pick.title||'').toLowerCase().slice(0,20)));
+    const displayTitle=matched?matched.title:pick.title;
+    document.getElementById('next-suggestion').innerHTML=`<strong>${esc(displayTitle)}</strong> <span style="color:var(--t3)">— ${esc(pick.reason)}</span>`;
   }catch(e){
     console.error('AI Next error:',e);
     document.getElementById('next-suggestion').innerHTML=`<span style="color:var(--red)">Error: ${esc(e.message||'Unknown')}</span>`;
