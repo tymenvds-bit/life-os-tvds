@@ -101,7 +101,15 @@ Personal life operating system for Tijmen van der Schyff.
 - **Recipe library** — save favourite recipes with ingredients, steps, prep time. Tag by cuisine, difficulty, weeknight vs weekend.
 - **"I just shopped"** capture mode — scan/photograph a till slip or dictate what was bought to update pantry inventory in bulk.
 
-**Sheet**: Expand `HomeInventory` or add `Pantry`, `Recipes`, `MealPlan` sheets.
+**Household Profiles & Dietary Biases** (stored in Settings or a `HouseholdProfiles` sheet):
+- **Tijmen**: Loves onions, loves sauces/gravies, adventurous eater, no specific restrictions.
+- **Wife**: Tolerates onions in moderation (not raw/overbearing), prioritises iron and Vitamin B intake, avoids calorie creep (gym-conscious — no heavy cream sauces, cheese-laden dishes), prefers lighter/cleaner meals.
+- **Shared rules**: Cook for 2. Meals must work for both unless tagged as individual. Balance across the week — if Tijmen gets a rich sauce night, wife gets a lighter option or the dish is adapted (sauce on the side, lighter sauce base, etc.)
+- **Meal log** — track what was actually cooked/eaten. AI learns preferences over time: "You haven't had red meat in 8 days" or "Wife's iron sources this week: 2 spinach dishes, 1 lentil". Avoids repetition — don't suggest chicken stir-fry 3x in a week.
+- **Adaptation strategies**: AI can suggest base dish + variations (e.g. "Beef stir-fry: Tijmen's bowl gets oyster sauce, wife's gets a light soy-ginger drizzle"). One cook, two happy people.
+- **Nutritional awareness**: Flag iron-rich ingredients (red meat, spinach, lentils, chickpeas), B-vitamin sources (eggs, whole grains, leafy greens), and build meal plans that hit targets without supplements.
+
+**Sheet**: Expand `HomeInventory` or add `Pantry`, `Recipes`, `MealPlan`, `MealLog`, `HouseholdProfiles` sheets.
 
 ### 2. Vehicle Module Corrections
 **Current issues to fix**:
