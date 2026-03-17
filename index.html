@@ -648,8 +648,7 @@ async function emailBriefing(){
   container.style.display='none';
 
   try{
-    // Step 1: Fetch unread emails from Gmail via Apps Script
-    const data=await emailFetch(50);
+    const data=await emailFetch(60);
     if(!data||!data.emails||data.emails.length===0){
       container.innerHTML='<div class="empty" style="padding:12px"><div class="empty-icon">📬</div><div>No unread emails</div></div>';
       container.style.display='block';
@@ -657,12 +656,19 @@ async function emailBriefing(){
       return;
     }
 
-    btn.innerHTML='<span class="spinner"></span> AI triaging '+data.emails.length+' emails…';
+    const allEmails=data.emails;
+    const BATCH=20;
+    const batches=[];
+    for(let i=0;i<allEmails.length;i+=BATCH) batches.push(allEmails.slice(i,i+BATCH));
 
-    // Step 2: Build email list for AI triage
-    const emailList=data.emails.map((e,i)=>`#${i+1} | From: ${e.from} | Subject: ${e.subject} | Date: ${e.date} | Preview: ${e.snippet.replace(/\n/g,' ').substring(0,150)}`).join('\n');
+    let allTriaged=[];
+    for(let b=0;b<batches.length;b++){
+      btn.innerHTML=`<span class="spinner"></span> AI triaging batch ${b+1}/${batches.length}…`;
+      const batch=batches[b];
+      const offset=b*BATCH;
+      const emailList=batch.map((e,i)=>`#${offset+i+1} | From: ${e.from} | Subject: ${e.subject} | Date: ${e.date} | Preview: ${e.snippet.replace(/\n/g,' ').substring(0,120)}`).join('\n');
 
-    const sys=`You are Tijmen van der Schyff's email triage assistant. CEO Prima Joinery, Pretoria.
+      const sys=`You are Tijmen van der Schyff's email triage assistant. CEO Prima Joinery, Pretoria.
 Today: ${TODAY}. Current time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}.
 
 Categorise each email into ONE category:
@@ -671,33 +677,46 @@ Categorise each email into ONE category:
 - "fyi": Informational — read but no action needed. Newsletters, confirmations, receipts.
 - "low": Marketing, promotions, spam-adjacent, social media notifications. Can ignore.
 
-Return ONLY valid JSON array (no markdown fences):
-[{"index":1,"category":"urgent|actionable|fyi|low","subject":"original subject","from_short":"first name or company","summary":"1 sentence — what it is and what action is needed","suggested_task":"short task title if actionable, or empty string"}]
+Return ONLY a valid JSON array. No markdown, no code fences, no explanation.
+Each item: {"index":NUMBER,"category":"urgent|actionable|fyi|low","subject":"original subject","from_short":"first name or company","summary":"max 15 words","suggested_task":"short action or empty string"}
 
-Rules:
-- Summarise in plain English, be specific about what action Tijmen needs to take
-- suggested_task should be a clear action item (e.g. "Reply to Santi re staff ratings") or "" if no action needed
-- Keep summaries under 20 words
-- Sort within categories by importance`;
+Keep summaries very brief. Be specific about what action Tijmen needs to take.`;
 
-    const raw=await claude(emailList,sys,2000);
-    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
-    let triaged;
-    try{triaged=JSON.parse(clean);}
-    catch{
-      const fix=await claude(`Fix this JSON array and return only valid JSON:\n${raw}`,'Return only valid JSON array.',800);
-      triaged=JSON.parse(fix.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim());
+      const raw=await claude(emailList,sys,3000);
+      const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+      let parsed;
+      try{parsed=JSON.parse(clean);}
+      catch{
+        // Try to recover truncated JSON by closing the array
+        let fixed=clean;
+        const lastBrace=fixed.lastIndexOf('}');
+        if(lastBrace>0) fixed=fixed.substring(0,lastBrace+1)+']';
+        try{parsed=JSON.parse(fixed);}
+        catch{
+          const fix=await claude(`This JSON array is truncated or broken. Fix it and return ONLY valid JSON:\n${clean.substring(0,2000)}`,'Return only valid JSON array. Close any unclosed strings, objects, and the array.',1500);
+          parsed=JSON.parse(fix.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim());
+        }
+      }
+      if(Array.isArray(parsed)) allTriaged=allTriaged.concat(parsed);
     }
 
-    // Step 3: Render the briefing
+    // Render the briefing
     const cats={urgent:{label:'🔴 Urgent — Action Today',items:[]},actionable:{label:'🟠 Actionable — This Week',items:[]},fyi:{label:'🔵 FYI — Read Only',items:[]},low:{label:'⚪ Low Priority / Skip',items:[]}};
-    triaged.forEach(e=>{
+    allTriaged.forEach(e=>{
       const cat=cats[e.category]||cats.fyi;
-      const orig=data.emails[e.index-1];
+      const orig=allEmails[e.index-1];
       cat.items.push({...e,date:orig?.date||'',threadId:orig?.threadId||''});
     });
 
-    let html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="ai-lbl" style="margin:0">📬 Email Briefing — '+data.total+' unread</div><button class="btn btn-sm" onclick="document.getElementById(\'email-briefing\').style.display=\'none\'">✕ Close</button></div>';
+    let html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="ai-lbl" style="margin:0">📬 Email Briefing — '+allEmails.length+' unread</div><button class="btn btn-sm" onclick="document.getElementById(\'email-briefing\').style.display=\'none\'">✕ Close</button></div>';
+
+    const urgCount=cats.urgent.items.length,actCount=cats.actionable.items.length,fyiCount=cats.fyi.items.length,lowCount=cats.low.items.length;
+    html=`<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--red)">${urgCount}</div><div class="today-lbl">Urgent</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--gold)">${actCount}</div><div class="today-lbl">Action</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--blue)">${fyiCount}</div><div class="today-lbl">FYI</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--t3)">${lowCount}</div><div class="today-lbl">Skip</div></div>
+    </div>`+html;
 
     for(const[key,cat] of Object.entries(cats)){
       if(!cat.items.length) continue;
@@ -705,11 +724,11 @@ Rules:
       for(const e of cat.items){
         html+=`<div class="email-card ${key}">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span class="email-from">${esc(e.from_short)}</span>
-            <span class="email-date">${esc(e.date)}</span>
+            <span class="email-from">${esc(e.from_short||'')}</span>
+            <span class="email-date">${esc(e.date||'')}</span>
           </div>
-          <div class="email-subject">${esc(e.subject)}</div>
-          <div class="email-summary">${esc(e.summary)}</div>
+          <div class="email-subject">${esc(e.subject||'')}</div>
+          <div class="email-summary">${esc(e.summary||'')}</div>
           <div class="email-actions">
             ${e.suggested_task?`<button class="btn btn-sm" onclick="emailToTask(${JSON.stringify(esc(e.suggested_task)).replace(/"/g,'&quot;')})">✅ Create Task</button>`:''}
           </div>
@@ -717,18 +736,6 @@ Rules:
       }
       html+='</div>';
     }
-
-    // Summary stats
-    const urgCount=cats.urgent.items.length;
-    const actCount=cats.actionable.items.length;
-    const fyiCount=cats.fyi.items.length;
-    const lowCount=cats.low.items.length;
-    html=`<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--red)">${urgCount}</div><div class="today-lbl">Urgent</div></div>
-      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--gold)">${actCount}</div><div class="today-lbl">Action</div></div>
-      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--blue)">${fyiCount}</div><div class="today-lbl">FYI</div></div>
-      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--t3)">${lowCount}</div><div class="today-lbl">Skip</div></div>
-    </div>`+html;
 
     container.innerHTML=html;
     container.style.display='block';
