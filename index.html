@@ -557,8 +557,10 @@ function getStatus(t){if(t.status && STATUS[t.status]) return t.status; return t
 function isOverdue(t){return t.due && t.due<TODAY && getStatus(t)!=='done';}
 function isStale(t){
   if(getStatus(t)==='done'||getStatus(t)==='waiting') return false;
-  const lastTouch=t.progress?t.progress.split('\n').pop().split(':')[0]:t.createdAt||'';
-  const touchDate=normalizeDate(lastTouch)||normalizeDate(t.createdAt);
+  // Check most recent activity: updatedAt > last progress entry > createdAt
+  let touchDate=normalizeDate(t.updatedAt);
+  if(!touchDate&&t.progress){const lastLine=t.progress.split('\n').filter(Boolean).pop()||'';touchDate=normalizeDate(lastLine.split(':')[0]);}
+  if(!touchDate) touchDate=normalizeDate(t.createdAt);
   if(!touchDate) return false;
   const diff=(new Date(TODAY)-new Date(touchDate))/(86400000);
   return diff>=14;
@@ -958,8 +960,8 @@ function cycleStatus(id){
   const cur=getStatus(t);
   const idx=STATUS_ORDER.indexOf(cur);
   const next=STATUS_ORDER[(idx+1)%STATUS_ORDER.length];
-  t.status=next;t.done=next==='done'?'1':'0';
-  apiPost('update','Todos',{id,patch:{status:next,done:t.done}});renderTodos();updateStats();
+  t.status=next;t.done=next==='done'?'1':'0';t.updatedAt=niso();
+  apiPost('update','Todos',{id,patch:{status:next,done:t.done,updatedAt:t.updatedAt}});renderTodos();updateStats();
   toast('Status → '+STATUS[next].label);
 }
 function addProgress(id){
@@ -967,8 +969,8 @@ function addProgress(id){
   const text=input.value.trim();if(!text)return;
   const t=DB.todos.find(t=>t.id==id);if(!t)return;
   const entry=TODAY+': '+text;
-  t.progress=t.progress?(t.progress+'\n'+entry):entry;
-  apiPost('update','Todos',{id,patch:{progress:t.progress}});
+  t.progress=t.progress?(t.progress+'\n'+entry):entry;t.updatedAt=niso();
+  apiPost('update','Todos',{id,patch:{progress:t.progress,updatedAt:t.updatedAt}});
   input.value='';renderTodos();toast('Progress logged');
 }
 function updateDue(id,newDue){
@@ -1109,8 +1111,8 @@ function renderTodos(){
 }
 function setTaskStatus(id,status){
   const t=DB.todos.find(t=>t.id==id);if(!t)return;
-  t.status=status;t.done=status==='done'?'1':'0';
-  apiPost('update','Todos',{id,patch:{status,done:t.done}});renderTodos();updateStats();
+  t.status=status;t.done=status==='done'?'1':'0';t.updatedAt=niso();
+  apiPost('update','Todos',{id,patch:{status,done:t.done,updatedAt:t.updatedAt}});renderTodos();updateStats();
   toast('Status → '+STATUS[status].label);
 }
 
