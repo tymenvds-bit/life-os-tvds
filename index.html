@@ -623,12 +623,29 @@ async function apiFetch(sheet){
   }catch{return LS.get('los_'+sheet.toLowerCase(),[]);}
 }
 async function apiPost(action,sheet,data){
-  LS.set('los_'+sheet.toLowerCase(), action==='delete' ? DB[sheet.toLowerCase().replace('_patrol','_patrol')]?.filter(r=>r.id!=data.id)||[] : data.rows||[...LS.get('los_'+sheet.toLowerCase(),[]),data.row||{}]);
+  // Update localStorage cache properly per action type
+  const lsKey='los_'+sheet.toLowerCase();
+  if(action==='delete'){
+    const cached=LS.get(lsKey,[]);
+    LS.set(lsKey,cached.filter(r=>String(r.id)!=String(data.id)));
+  } else if(action==='update'&&data.id&&data.patch){
+    const cached=LS.get(lsKey,[]);
+    const idx=cached.findIndex(r=>String(r.id)==String(data.id));
+    if(idx>=0) Object.assign(cached[idx],data.patch);
+    LS.set(lsKey,cached);
+  } else if(action==='append'&&data.row){
+    LS.set(lsKey,[data.row,...LS.get(lsKey,[])]);
+  } else if(data.rows){
+    LS.set(lsKey,data.rows);
+  }
   if(!CFG.apiUrl) return {ok:true,local:true};
   try{
     const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,sheet,...data})});
-    return await r.json();
-  }catch{return{ok:false,local:true};}
+    const result=await r.json();
+    if(result.error) console.warn('⚠️ apiPost error:',action,sheet,result.error);
+    else console.log('✅ apiPost:',action,sheet,data.id||'');
+    return result;
+  }catch(e){console.error('❌ apiPost network error:',action,sheet,e.message);return{ok:false,local:true};}
 }
 
 async function calFetch(days=14){
@@ -1104,35 +1121,37 @@ function quickAdd(){
   document.getElementById('q-title').value='';renderTodos();updateStats();renderSnapshot();toast('Task added');
 }
 function setFilter(f,btn){todoFilter=f;document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTodos();}
-function toggleTodo(id){
+async function toggleTodo(id){
   const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
   if(getStatus(t)==='done'){t.done='0';t.status='open';}
   else{t.done='1';t.status='done';}
   t.updatedAt=niso();
-  apiPost('update','Todos',{id:t.id,patch:{done:t.done,status:t.status,updatedAt:t.updatedAt}});renderTodos();renderSnapshot();updateStats();
+  renderTodos();renderDashboard();updateStats();
+  const res=await apiPost('update','Todos',{id:String(t.id),patch:{done:t.done,status:t.status,updatedAt:t.updatedAt}});
+  if(res.error) toast('Sync error: '+res.error);
 }
 function cycleStatus(id){
-  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
   const cur=getStatus(t);
   const idx=STATUS_ORDER.indexOf(cur);
   const next=STATUS_ORDER[(idx+1)%STATUS_ORDER.length];
   t.status=next;t.done=next==='done'?'1':'0';t.updatedAt=niso();
-  apiPost('update','Todos',{id,patch:{status:next,done:t.done,updatedAt:t.updatedAt}});renderTodos();updateStats();
+  apiPost('update','Todos',{id:String(t.id),patch:{status:next,done:t.done,updatedAt:t.updatedAt}});renderTodos();renderDashboard();updateStats();
   toast('Status → '+STATUS[next].label);
 }
 function addProgress(id){
   const input=document.getElementById('prog-'+id);if(!input)return;
   const text=input.value.trim();if(!text)return;
-  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
   const entry=TODAY+': '+text;
   t.progress=t.progress?(t.progress+'\n'+entry):entry;t.updatedAt=niso();
-  apiPost('update','Todos',{id,patch:{progress:t.progress,updatedAt:t.updatedAt}});
+  apiPost('update','Todos',{id:String(t.id),patch:{progress:t.progress,updatedAt:t.updatedAt}});
   input.value='';renderTodos();toast('Progress logged');
 }
 function updateDue(id,newDue){
-  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
   t.due=newDue;
-  apiPost('update','Todos',{id,patch:{due:newDue}});renderTodos();toast('Due date updated');
+  apiPost('update','Todos',{id:String(t.id),patch:{due:newDue}});renderTodos();toast('Due date updated');
 }
 function deleteTodo(id){DB.todos=DB.todos.filter(t=>t.id!=id);apiPost('delete','Todos',{id});renderTodos();updateStats();}
 function expandTodo(id){expandedTodo=expandedTodo==id?null:id;renderTodos();}
@@ -1295,9 +1314,9 @@ function renderTodos(){
   }).join('');
 }
 function setTaskStatus(id,status){
-  const t=DB.todos.find(t=>t.id==id);if(!t)return;
+  const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
   t.status=status;t.done=status==='done'?'1':'0';t.updatedAt=niso();
-  apiPost('update','Todos',{id,patch:{status,done:t.done,updatedAt:t.updatedAt}});renderTodos();updateStats();
+  apiPost('update','Todos',{id:String(t.id),patch:{status,done:t.done,updatedAt:t.updatedAt}});renderTodos();renderDashboard();updateStats();
   toast('Status → '+STATUS[status].label);
 }
 
