@@ -297,7 +297,20 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 
 **Sheet**: `AIUsage` (id, date, action, tokens_in, tokens_out, cost_usd, model)
 
-### 11. Known Bugs / Tech Debt
+### 11. Decision Tracker
+**Context**: Tijmen makes significant business and personal decisions regularly. Tracking them helps with accountability, learning from outcomes, and building a personal decision-making playbook.
+
+**Vision**:
+- **Decision log** — what was decided, date, context, options considered, reasoning, expected outcome
+- **Outcome tracking** — revisit decisions after 30/90 days: what actually happened? Was it the right call?
+- **AI patterns** — "What decisions have you made about staffing?" or "Show me decisions where the outcome differed from expectation"
+- **Decision frameworks** — tag by method used (gut feel, data-driven, advice-based, Munger inversion, cost-benefit)
+- **Linked to tasks** — decisions often generate tasks; link them so you can trace why something was started
+- **Dashboard widget** — "Decisions pending review" (outcomes not yet recorded)
+
+**Sheet**: `Decisions` (id, date, title, context, options, decision, reasoning, framework, expectedOutcome, actualOutcome, reviewDate, status, linkedTasks, tags)
+
+### 12. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
 - Service worker cache: must bump version in `sw.js` on every deploy; users need hard refresh
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)

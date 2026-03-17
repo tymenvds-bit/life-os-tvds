@@ -290,6 +290,13 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         <div class="card-title">Today's snapshot</div>
         <div id="snapshot"></div>
       </div>
+      <div class="card" id="focus-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="card-title" style="margin:0">Your focus today</div>
+          <button class="btn btn-ai btn-sm" onclick="aiFocus()" id="focus-btn">🤖 AI Pick</button>
+        </div>
+        <div id="focus-list"><div class="empty" style="padding:10px 0"><div style="font-size:11px;color:var(--t3)">Click AI Pick to get your 3-5 focus tasks for today</div></div></div>
+      </div>
     </div>
 
     <!-- ✅ TODOS -->
@@ -305,12 +312,17 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         </div>
         <textarea id="t-notes" placeholder="Notes…" rows="2" style="margin-top:6px;min-height:36px"></textarea>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <button class="btn btn-ai btn-sm" onclick="aiNextTask()" id="next-btn">🤖 What should I do next?</button>
+        <div id="next-suggestion" style="font-size:12px;color:var(--t2);flex:1"></div>
+      </div>
       <div class="filters" id="todo-filters">
         <button class="fbtn active" onclick="setFilter('all',this)">All</button>
         <button class="fbtn" onclick="setFilter('active',this)">Active</button>
         <button class="fbtn" onclick="setFilter('urgent',this)">🔴 Urgent</button>
         <button class="fbtn" onclick="setFilter('waiting',this)">⏳ Waiting</button>
         <button class="fbtn" onclick="setFilter('overdue',this)">🔥 Overdue</button>
+        <button class="fbtn" onclick="setFilter('stale',this)">💀 Stale</button>
         <button class="fbtn" onclick="setFilter('prima-finance',this)">💰 Finance</button>
         <button class="fbtn" onclick="setFilter('prima-ops',this)">🏭 Ops</button>
         <button class="fbtn" onclick="setFilter('vehicle',this)">🚙 Vehicle</button>
@@ -543,6 +555,14 @@ const STATUS = {open:{label:'Open',cls:'status-open'},['in-progress']:{label:'In
 const STATUS_ORDER = ['open','in-progress','waiting','done'];
 function getStatus(t){if(t.status && STATUS[t.status]) return t.status; return t.done==='1'?'done':'open';}
 function isOverdue(t){return t.due && t.due<TODAY && getStatus(t)!=='done';}
+function isStale(t){
+  if(getStatus(t)==='done'||getStatus(t)==='waiting') return false;
+  const lastTouch=t.progress?t.progress.split('\n').pop().split(':')[0]:t.createdAt||'';
+  const touchDate=normalizeDate(lastTouch)||normalizeDate(t.createdAt);
+  if(!touchDate) return false;
+  const diff=(new Date(TODAY)-new Date(touchDate))/(86400000);
+  return diff>=14;
+}
 const TODAY = new Date().toISOString().split('T')[0];
 const MOODS = ['','😞','😕','😐','🙂','😊'];
 let calEvents = [];
@@ -964,6 +984,66 @@ async function aiBreakdown(id){
   const r=await claude(`Break this task into 3-5 concrete next actions. Task: "${t.title}". Notes: "${t.notes||''}". Return as numbered list.`);
   t.aiBreakdown=r;apiPost('update','Todos',{id,patch:{aiBreakdown:r}});if(expandedTodo==id)renderTodos();
 }
+
+// ═══ AI SMART TASK MANAGEMENT ═══
+async function aiFocus(){
+  const btn=document.getElementById('focus-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Thinking…';
+  const tasks=DB.todos.filter(t=>getStatus(t)!=='done');
+  const taskSummary=tasks.map(t=>{
+    const st=getStatus(t);const od=isOverdue(t);const stale=isStale(t);
+    return `- "${t.title}" [${t.category}, ${t.priority}, ${st}${od?', OVERDUE':''}${stale?', STALE 14+ days':''}${t.due?', due '+t.due:''}]`;
+  }).join('\n');
+  const calToday=calEvents.filter(e=>e.date===TODAY).map(e=>`${e.start} ${e.title}`).join(', ');
+  const timeLogged=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
+  const prompt=`Here are my ${tasks.length} open tasks:\n${taskSummary}\n\nToday's calendar: ${calToday||'nothing scheduled'}\nTime already logged today: ${Math.round(timeLogged/60)}h ${timeLogged%60}m\nCurrent time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nDay: ${new Date().toLocaleDateString('en-ZA',{weekday:'long'})}\n\nPick my TOP 3-5 focus tasks for today. Consider: overdue items first, then urgent, then high priority, then what hasn't been touched in a while. Factor in available time remaining today.\n\nReturn ONLY a JSON array of objects: [{"id":TASK_ID,"reason":"brief why this today"}]`;
+  try{
+    const raw=await claude(prompt,`You are a productivity assistant. Pick 3-5 focus tasks from the list. Return ONLY valid JSON array, no markdown.`,500);
+    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    const picks=JSON.parse(clean);
+    const el=document.getElementById('focus-list');
+    el.innerHTML=picks.map(p=>{
+      const t=tasks.find(t=>t.id==p.id);if(!t)return'';
+      const cat=CATS[t.category]||CATS.admin;const pri=PRI[t.priority]||PRI.normal;
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:8px">
+        <div class="check ${getStatus(t)==='done'?'done':''}" onclick="toggleTodo(${t.id})">${getStatus(t)==='done'?'✓':''}</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500;color:var(--t)">${esc(t.title)}</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(p.reason)}</div>
+        </div>
+        <span class="tag" style="background:${cat.color}22;color:${cat.color};font-size:9px">${cat.emoji}</span>
+      </div>`;
+    }).join('');
+  }catch(e){
+    document.getElementById('focus-list').innerHTML='<div style="color:var(--t3);font-size:12px">Could not generate focus list. Try again.</div>';
+  }
+  btn.disabled=false;btn.innerHTML='🤖 AI Pick';
+}
+
+async function aiNextTask(){
+  const btn=document.getElementById('next-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Thinking…';
+  const tasks=DB.todos.filter(t=>getStatus(t)!=='done'&&getStatus(t)!=='waiting');
+  const taskSummary=tasks.slice(0,30).map(t=>{
+    const od=isOverdue(t);const stale=isStale(t);
+    return `- "${t.title}" [${t.priority}${od?', OVERDUE':''}${stale?', STALE':''}${t.due?', due '+t.due:''}]`;
+  }).join('\n');
+  const hour=new Date().getHours();
+  const energy=hour<12?'high (morning)':hour<14?'medium (midday)':hour<17?'medium (afternoon)':'low (evening)';
+  try{
+    const raw=await claude(
+      `My open actionable tasks:\n${taskSummary}\n\nTime now: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nEnergy level: ${energy}\n\nPick the ONE best task to do right now. Return ONLY JSON: {"title":"exact task title","reason":"10 words max why"}`,
+      'You are a productivity coach. Pick ONE task. Return only valid JSON.',200
+    );
+    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    const pick=JSON.parse(clean);
+    document.getElementById('next-suggestion').innerHTML=`<strong>${esc(pick.title)}</strong> <span style="color:var(--t3)">— ${esc(pick.reason)}</span>`;
+  }catch(e){
+    document.getElementById('next-suggestion').innerHTML='<span style="color:var(--t3)">Could not decide. Try again.</span>';
+  }
+  btn.disabled=false;btn.innerHTML='🤖 What should I do next?';
+}
+
 function renderTodos(){
   const el=document.getElementById('todo-list');if(!el)return;
   let items=[...DB.todos];
@@ -972,6 +1052,7 @@ function renderTodos(){
   else if(todoFilter==='urgent') items=items.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent');
   else if(todoFilter==='waiting') items=items.filter(t=>getStatus(t)==='waiting');
   else if(todoFilter==='overdue') items=items.filter(t=>isOverdue(t));
+  else if(todoFilter==='stale') items=items.filter(t=>isStale(t));
   else if(todoFilter!=='all') items=items.filter(t=>t.category===todoFilter&&getStatus(t)!=='done');
   items.sort((a,b)=>{
     const ad=getStatus(a)==='done',bd=getStatus(b)==='done';
@@ -996,6 +1077,7 @@ function renderTodos(){
             <span class="tag" style="background:${cat.color}22;color:${cat.color}">${cat.emoji} ${cat.label}</span>
             <span class="tag" style="background:${p.c}22;color:${p.c}">${p.l}</span>
             ${overdue?'<span class="overdue-tag">🔥 Overdue</span>':''}
+            ${isStale(t)?'<span style="background:#55522;color:#555;font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;font-family:\'DM Mono\',monospace">💀 Stale</span>':''}
             ${t.due?`<span style="font-size:10px;color:${overdue?'var(--red)':'var(--t3)'}">Due ${fmtDate(t.due)}</span>`:''}
           </div>
         </div>
@@ -1363,16 +1445,26 @@ function updateStats(){
 }
 function renderSnapshot(){
   const el=document.getElementById('snapshot');if(!el)return;
-  const urgent=DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent').slice(0,3);
-  const overdueCount=DB.todos.filter(t=>isOverdue(t)).length;
-  const waitingCount=DB.todos.filter(t=>getStatus(t)==='waiting').length;
+  const urgent=DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent');
+  const overdueList=DB.todos.filter(t=>isOverdue(t));
+  const waitingList=DB.todos.filter(t=>getStatus(t)==='waiting');
+  const staleList=DB.todos.filter(t=>isStale(t));
   const todayTime=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
+  const inProgress=DB.todos.filter(t=>getStatus(t)==='in-progress');
   el.innerHTML=`<div class="today-grid" style="margin-bottom:8px">
-    <div class="today-stat"><div class="today-val" style="color:var(--red)">${DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent').length}</div><div class="today-lbl">Urgent</div></div>
+    <div class="today-stat"><div class="today-val" style="color:var(--red)">${urgent.length}</div><div class="today-lbl">Urgent</div></div>
     <div class="today-stat"><div class="today-val" style="color:var(--gold)">${DB.todos.filter(t=>getStatus(t)!=='done').length}</div><div class="today-lbl">Open</div></div>
     <div class="today-stat"><div class="today-val" style="color:var(--blue)">${fmtDur(todayTime)}</div><div class="today-lbl">Logged</div></div>
     <div class="today-stat"><div class="today-val">${DB.journal.filter(j=>j.date===TODAY).length>0?'✓':'–'}</div><div class="today-lbl">Journal</div></div>
-  </div>${overdueCount?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:5px;font-family:'DM Mono',monospace">🔥 ${overdueCount} overdue</div>`:''}${waitingCount?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--pink);margin-bottom:5px;font-family:'DM Mono',monospace">⏳ ${waitingCount} waiting</div>`:''}${urgent.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:5px;font-family:'DM Mono',monospace">🔴 Urgent today</div>${urgent.map(t=>`<div style="padding:5px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}${isOverdue(t)?' <span class="overdue-tag">overdue</span>':''}</div>`).join('')}`:''}`;
+  </div>
+  ${overdueList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:3px;font-family:'DM Mono',monospace">🔥 ${overdueList.length} overdue</div>
+  ${overdueList.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)} <span class="overdue-tag">overdue</span></div>`).join('')}${overdueList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${overdueList.length-3} more</div>`:''}`:''}
+  ${waitingList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--pink);margin:6px 0 3px;font-family:'DM Mono',monospace">⏳ ${waitingList.length} waiting on others</div>
+  ${waitingList.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}</div>`).join('')}${waitingList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${waitingList.length-3} more</div>`:''}`:''}
+  ${staleList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;margin:6px 0 3px;font-family:'DM Mono',monospace">💀 ${staleList.length} stale (14+ days untouched)</div>
+  ${staleList.slice(0,2).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t3)">${esc(t.title)}</div>`).join('')}${staleList.length>2?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${staleList.length-2} more — review these!</div>`:''}`:''}
+  ${inProgress.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin:6px 0 3px;font-family:'DM Mono',monospace">🔧 ${inProgress.length} in progress</div>
+  ${inProgress.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}</div>`).join('')}`:''}`;
 }
 function renderAll(){renderTodos();renderNotes();renderJournalSidebar();renderTimeLog();renderCalendar();renderInventory();renderVehicles();renderSnapshot();updateStats();}
 
