@@ -1017,7 +1017,8 @@ async function aiFocus(){
       </div>`;
     }).join('');
   }catch(e){
-    document.getElementById('focus-list').innerHTML='<div style="color:var(--t3);font-size:12px">Could not generate focus list. Try again.</div>';
+    console.error('AI Focus error:',e);
+    document.getElementById('focus-list').innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${esc(e.message||'Unknown')}. Check API key in Settings.</div>`;
   }
   btn.disabled=false;btn.innerHTML='🤖 AI Pick';
 }
@@ -1041,7 +1042,8 @@ async function aiNextTask(){
     const pick=JSON.parse(clean);
     document.getElementById('next-suggestion').innerHTML=`<strong>${esc(pick.title)}</strong> <span style="color:var(--t3)">— ${esc(pick.reason)}</span>`;
   }catch(e){
-    document.getElementById('next-suggestion').innerHTML='<span style="color:var(--t3)">Could not decide. Try again.</span>';
+    console.error('AI Next error:',e);
+    document.getElementById('next-suggestion').innerHTML=`<span style="color:var(--red)">Error: ${esc(e.message||'Unknown')}</span>`;
   }
   btn.disabled=false;btn.innerHTML='🤖 What should I do next?';
 }
