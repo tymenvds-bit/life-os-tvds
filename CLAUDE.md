@@ -163,7 +163,7 @@ Personal life operating system for Tijmen van der Schyff.
 - Odometer tracking and trip logging
 - Service interval reminders (next service due at X km or Y date)
 
-### 3. Smart Task Management (Productivity Science)
+### 5. Smart Task Management (Productivity Science)
 **Problem**: 100+ tasks, limited hours in a day. Items get lost, nothing feels front-of-mind, overwhelm leads to paralysis.
 
 **Principles to implement** (based on GTD, Eisenhower, time-boxing, cognitive load research):
@@ -177,7 +177,7 @@ Personal life operating system for Tijmen van der Schyff.
 - **Progress momentum** — show streak/completion stats. "You completed 4/5 focus tasks today." Dopamine feedback loop.
 - **"What should I do next?"** button — AI considers: time available, energy level (based on time of day), pending deadlines, context. Returns the single best next action.
 
-### 4. Dashboard Redesign
+### 6. Dashboard Redesign
 **Current**: Basic snapshot with urgent count, open count, time logged, journal status.
 
 **Vision**: A real command centre:
@@ -189,7 +189,7 @@ Personal life operating system for Tijmen van der Schyff.
 - **Weekly momentum** — completion rate trend, streak counter
 - **Calendar preview** — next 3 events today
 
-### 5. Known Bugs / Tech Debt
+### 7. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
 - Service worker cache: must bump version in `sw.js` on every deploy; users need hard refresh
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)
