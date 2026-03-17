@@ -825,6 +825,9 @@ async function commitCapture(){
   try{
   const p=captureData;
   if(!p){toast('Nothing to save');return;}
+  // Show saving state
+  const saveBtn=document.querySelector('#cap-preview .btn-primary');
+  if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<span class="spinner"></span> Saving…';}
   setSyncBadge('pending');
   const added=[];
   if(p.task_updates?.length){
