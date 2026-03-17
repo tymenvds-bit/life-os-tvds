@@ -111,7 +111,51 @@ Personal life operating system for Tijmen van der Schyff.
 
 **Sheet**: Expand `HomeInventory` or add `Pantry`, `Recipes`, `MealPlan`, `MealLog`, `HouseholdProfiles` sheets.
 
-### 2. Vehicle Module Corrections
+### 2. Compliance Calendar & Team Visibility
+**Context**: Tijmen has an Excel sheet with all Prima Joinery compliance dates — VAT submissions, fire extinguisher services, vehicle licences, insurance renewals, COIDA, UIF, etc. He oversees and actions many of these personally. Team currently uses ClickUp but it's not working — too much friction, items get lost.
+
+**Data source**: Existing Excel spreadsheet with ~200+ compliance items, each with:
+- What (description)
+- Frequency (monthly, quarterly, annual, once-off)
+- Due date / recurring schedule
+- Responsible person
+- Status (done/pending/overdue)
+
+**Vision**:
+- **Import from Excel** — one-time bulk import of compliance items into a `Compliance` sheet
+- **Recurring auto-generation** — system auto-creates next occurrence when current one is completed (e.g. VAT submission done → next one due in 2 months)
+- **Dashboard widget** — "Compliance due this week/month" with red/amber/green status
+- **Team view** — lightweight shared URL (read-only or with action buttons) so team members see what's due without needing ClickUp. Could be a separate simple page that reads from the same Google Sheet.
+- **Notifications** — items approaching due date surface in daily focus. Overdue items escalate to urgent.
+- **Categories**: Tax (VAT, PAYE, UIF, SDL), Insurance (vehicle, building, liability), Safety (fire extinguishers, COC), Licences (vehicle, trade), HR (contracts, COIDA), Other.
+
+### 3. ClickUp Migration & List Consolidation
+**Problem**: ~200+ items on ClickUp across to-do lists and wish lists. Nobody looks at it. Items accumulate and die.
+
+**Root cause analysis** (why long lists fail):
+1. **No triage** — everything has equal visual weight. Item #1 and item #187 look the same.
+2. **No surfacing** — out of sight, out of mind. If you don't open ClickUp daily, items are invisible.
+3. **Decision fatigue** — scanning 200 items to find what to do next is exhausting. Brain shuts down.
+4. **No accountability loop** — no system asks "did you do this?" or "is this still relevant?"
+5. **Wrong tool** — ClickUp is built for teams with project managers. Solo CEO needs a personal command centre, not a project management suite.
+
+**Migration strategy**:
+- Export ClickUp data (CSV/JSON)
+- AI categorises each item: active task vs someday/maybe vs dead (obsolete, already done, no longer relevant)
+- Active tasks get imported into Life OS Todos with proper categories, priorities, due dates
+- Someday/maybe items go into a separate "Backlog" or "Ideas" sheet — reviewed monthly
+- Dead items get archived or deleted
+- ClickUp gets retired (or kept for team-specific project tracking only)
+
+**The 200-item solution** (applies to both ClickUp and compliance):
+- Items live in the system but are NOT all visible at once
+- AI surfaces only what matters TODAY (3-5 focus items)
+- Weekly review surfaces what matters THIS WEEK
+- Monthly review catches everything else
+- "Stale item" alerts force decisions on forgotten items
+- The human never has to scroll a 200-item list again
+
+### 4. Vehicle Module Corrections
 **Current issues to fix**:
 - Review and correct GQ_Patrol and GU_Patrol data structure
 - Verify fuel consumption calculations (km/L)
