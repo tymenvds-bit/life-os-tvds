@@ -155,7 +155,33 @@ Personal life operating system for Tijmen van der Schyff.
 - "Stale item" alerts force decisions on forgotten items
 - The human never has to scroll a 200-item list again
 
-### 4. Vehicle Module Corrections
+### 4. Voice & Image Capture
+**Context**: Tijmen is often driving or at a fuel pump — can't type. Needs hands-free and camera-based input.
+
+**Voice capture**:
+- Button in Universal Capture that uses browser `SpeechRecognition` API (Web Speech API)
+- Tap mic → speak → voice-to-text fills the capture textarea → then Process Everything as normal
+- Works on Chrome mobile (Android + iOS Safari 14.5+)
+- Fallback: if SpeechRecognition unavailable, show "not supported" toast
+- No external API needed — browser handles speech-to-text natively
+
+**Image capture (fuel slips, odometer, receipts)**:
+- Camera button in Universal Capture that opens phone camera or file picker
+- Image is sent to Claude Vision API (claude-sonnet with image support) for OCR/extraction
+- **Fuel slip photo** → AI extracts: litres, cost per litre, total, station name, date
+- **Odometer photo** → AI extracts: reading, and if licence plate visible, auto-matches to GQ or GU Patrol
+- **Receipt photo** → AI extracts line items, total, store — routes to relevant module
+- **Till slip from shopping** → updates pantry inventory (future meal planning feature)
+- Images are NOT stored (privacy) — only the extracted data is saved
+- Uses Claude API with `type: "image"` content block in the messages array
+- Max image size: resize to 1024px before sending to keep API costs low
+
+**Implementation notes**:
+- `navigator.mediaDevices.getUserMedia` or `<input type="file" accept="image/*" capture="environment">` for camera access
+- Convert image to base64, send to Claude with extraction prompt
+- Parse JSON response same as text capture → buildPreview → Save All
+
+### 5. Vehicle Module Corrections
 **Current issues to fix**:
 - Review and correct GQ_Patrol and GU_Patrol data structure
 - Verify fuel consumption calculations (km/L)
@@ -163,7 +189,7 @@ Personal life operating system for Tijmen van der Schyff.
 - Odometer tracking and trip logging
 - Service interval reminders (next service due at X km or Y date)
 
-### 5. Smart Task Management (Productivity Science)
+### 6. Smart Task Management (Productivity Science)
 **Problem**: 100+ tasks, limited hours in a day. Items get lost, nothing feels front-of-mind, overwhelm leads to paralysis.
 
 **Principles to implement** (based on GTD, Eisenhower, time-boxing, cognitive load research):
@@ -177,7 +203,7 @@ Personal life operating system for Tijmen van der Schyff.
 - **Progress momentum** — show streak/completion stats. "You completed 4/5 focus tasks today." Dopamine feedback loop.
 - **"What should I do next?"** button — AI considers: time available, energy level (based on time of day), pending deadlines, context. Returns the single best next action.
 
-### 6. Dashboard Redesign
+### 7. Dashboard Redesign
 **Current**: Basic snapshot with urgent count, open count, time logged, journal status.
 
 **Vision**: A real command centre:
@@ -189,7 +215,7 @@ Personal life operating system for Tijmen van der Schyff.
 - **Weekly momentum** — completion rate trend, streak counter
 - **Calendar preview** — next 3 events today
 
-### 7. Known Bugs / Tech Debt
+### 8. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
 - Service worker cache: must bump version in `sw.js` on every deploy; users need hard refresh
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)
