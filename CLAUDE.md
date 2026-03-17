@@ -61,6 +61,10 @@ Personal life operating system for Tijmen van der Schyff.
 - `esc(s)` — HTML-escape strings (XSS prevention)
 - `uid()` — generate unique IDs
 - `toast(msg)` — show notification
+- `normalizeDate(d)` — convert any date format (Date object, MM/DD/YYYY, ISO) to YYYY-MM-DD
+- `shiftTimeDate(offset)` — navigate Time tab date (◀/▶ arrows, Today button)
+- `setTimeView(mode)` / `renderTimeStats()` — Screen Time-style visualization (day/week/month with stacked category bars)
+- `applyTheme()` / `isDaylight()` — auto light/dark theme based on Pretoria sunrise/sunset times; manual override in Settings
 
 ## Backend API Actions (api.gs)
 

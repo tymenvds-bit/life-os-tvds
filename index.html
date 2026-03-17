@@ -11,7 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d0d0d;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--b:#242424;--b2:#2e2e2e;--t:#e8e8e8;--t2:#999;--t3:#555;--gold:#c9a84c;--gold2:#e8c96b;--red:#d44;--orange:#c87832;--blue:#4a8ab5;--green:#5a9060;--pink:#b55a7a;--teal:#3a8a8a;--r:8px;--rl:12px}
+:root,html[data-theme="dark"]{--bg:#0d0d0d;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--b:#242424;--b2:#2e2e2e;--t:#e8e8e8;--t2:#999;--t3:#555;--gold:#c9a84c;--gold2:#e8c96b;--red:#d44;--orange:#c87832;--blue:#4a8ab5;--green:#5a9060;--pink:#b55a7a;--teal:#3a8a8a;--r:8px;--rl:12px}
+html[data-theme="light"]{--bg:#f4f4f5;--bg1:#fff;--bg2:#fafafa;--bg3:#f0f0f0;--b:#e0e0e0;--b2:#d0d0d0;--t:#1a1a1a;--t2:#555;--t3:#999;--gold:#b8922e;--gold2:#9a7a20;--red:#c33;--orange:#b06a28;--blue:#3a7aa5;--green:#4a8050;--pink:#a5406a;--teal:#2a7a7a;--r:8px;--rl:12px}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--t);font-family:'DM Sans',sans-serif;font-size:14px;overflow:hidden}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px}
@@ -130,6 +131,17 @@ textarea{resize:vertical;line-height:1.6}
 
 /* TIME */
 .time-block{background:var(--bg1);border:1px solid var(--b);border-radius:var(--r);padding:8px 11px;display:flex;align-items:center;gap:8px;border-left-width:3px;margin-bottom:4px}
+.tv-btn.active{background:var(--gold)!important;color:#000!important}
+.time-chart{display:flex;align-items:flex-end;gap:3px;height:140px;padding:0 4px;margin-bottom:8px}
+.time-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.time-col-bar{width:100%;border-radius:3px 3px 0 0;min-height:0;transition:height .3s}
+.time-col-lbl{font-size:9px;color:var(--t3);font-family:'DM Mono',monospace}
+.time-col-total{font-size:8px;color:var(--t2);font-family:'DM Mono',monospace}
+.time-breakdown{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.time-cat-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.time-cat-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.time-cat-name{flex:1;color:var(--t2)}
+.time-cat-dur{font-family:'DM Mono',monospace;color:var(--t);font-weight:500}
 .cat-bar{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .cat-track{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
 .cat-fill{height:100%;border-radius:2px}
@@ -344,11 +356,27 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="card-title" style="margin-bottom:0">Day log</span>
+          <button class="btn btn-sm" onclick="shiftTimeDate(-1)" style="padding:4px 8px">◀</button>
           <input id="vd-date" type="date" style="width:130px" onchange="renderTimeLog()">
+          <button class="btn btn-sm" onclick="shiftTimeDate(1)" style="padding:4px 8px">▶</button>
+          <button class="btn btn-sm" onclick="shiftTimeDate(0)" style="padding:4px 8px;font-size:10px">Today</button>
           <span style="color:var(--t3);font-size:12px;margin-left:auto">Total: <strong style="color:var(--gold)" id="day-total">0h</strong></span>
         </div>
         <div id="cat-bars" style="margin-bottom:8px"></div>
         <div id="time-list"></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span class="card-title" style="margin-bottom:0">Time stats</span>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            <button class="btn btn-sm tv-btn active" onclick="setTimeView('day',this)">Day</button>
+            <button class="btn btn-sm tv-btn" onclick="setTimeView('week',this)">Week</button>
+            <button class="btn btn-sm tv-btn" onclick="setTimeView('month',this)">Month</button>
+          </div>
+        </div>
+        <div id="time-big-total" style="font-family:'DM Mono',monospace;font-size:28px;font-weight:600;color:var(--gold);text-align:center;margin-bottom:8px">0h 0m</div>
+        <div id="time-chart"></div>
+        <div id="time-breakdown" class="time-breakdown"></div>
       </div>
     </div>
 
@@ -480,6 +508,12 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
     <div class="card-title" style="margin-top:4px">Anthropic API Key</div>
     <input id="cfg-key" type="password" placeholder="sk-ant-..." style="margin-bottom:8px">
     <div style="font-size:11px;color:var(--t3);margin-bottom:8px" id="cfg-mode"></div>
+    <div class="card-title" style="margin-top:4px">Theme</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="auto"> 🌗 Auto</label>
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="dark"> 🌙 Dark</label>
+      <label style="font-size:12px;display:flex;align-items;center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="light"> ☀️ Light</label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-sm" onclick="closeSettings()">Cancel</button>
       <button class="btn btn-sm btn-danger" style="color:var(--red);background:#1a0808;border-color:#3a1010" onclick="clearData()">Clear data</button>
@@ -573,6 +607,10 @@ async function loadAll(){
     else if(s==='PrimaStock') DB.prima_stock=rows;
     else DB[key]=rows;
   }));
+  // Normalize dates from Sheets (may come as Date objects or different formats)
+  DB.time.forEach(b=>{b.date=normalizeDate(b.date);});
+  DB.journal.forEach(j=>{j.date=normalizeDate(j.date);});
+  DB.todos.forEach(t=>{if(t.due)t.due=normalizeDate(t.due);});
   calEvents=await calFetch(14);
   setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
@@ -1120,6 +1158,7 @@ function renderTimeLog(){
   const list=document.getElementById('time-list');if(!list)return;
   if(!blocks.length){list.innerHTML='<div class="empty"><div class="empty-icon">⏱</div>No time logged</div>';return;}
   list.innerHTML=blocks.map(b=>{const cat=CATS[b.category]||CATS.admin;return`<div class="time-block" style="border-left-color:${cat.color}"><span style="font-size:16px;flex-shrink:0">${cat.emoji}</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.title)}</div><div style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">${b.start&&b.end?b.start+'–'+b.end+' · ':''}<strong style="color:var(--gold)">${fmtDur(+b.duration)}</strong></div></div><button class="btn-icon" onclick="delTimeBlock(${b.id})">🗑</button></div>`;}).join('');
+  renderTimeStats();
 }
 function delTimeBlock(id){DB.time=DB.time.filter(b=>b.id!=id);apiPost('delete','Time',{id});renderTimeLog();updateStats();}
 
@@ -1362,6 +1401,8 @@ function openSettings(){
   document.getElementById('cfg-api').value=CFG.apiUrl||'';
   document.getElementById('cfg-key').value=CFG.apiKey||'';
   document.getElementById('cfg-mode').textContent=CFG.apiUrl?'✅ Connected to Google Sheets':'⚠️ Local mode — data on this device only';
+  const themeRadio=document.querySelector(`input[name="cfg-theme"][value="${CFG.theme||'auto'}"]`);
+  if(themeRadio) themeRadio.checked=true;
   document.getElementById('settings-modal').style.display='flex';
 }
 function closeSettings(){document.getElementById('settings-modal').style.display='none';}
@@ -1369,7 +1410,9 @@ function saveSettings(){
   CFG.apiUrl=document.getElementById('cfg-api').value.trim();
   CFG.apiKey=document.getElementById('cfg-key').value.trim();
   CFG.mode=CFG.apiUrl?'sheets':'local';
-  LS.set('los_cfg',CFG);closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
+  const themeRadio=document.querySelector('input[name="cfg-theme"]:checked');
+  CFG.theme=themeRadio?themeRadio.value:'auto';
+  LS.set('los_cfg',CFG);applyTheme();closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
 function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
 
@@ -1388,12 +1431,14 @@ async function initApp(){
   document.getElementById('vd-date')&&(document.getElementById('vd-date').value=TODAY);
   document.getElementById('bk-date')&&(document.getElementById('bk-date').value=TODAY);
   document.getElementById('veh-date')&&(document.getElementById('veh-date').value=TODAY);
+  applyTheme();setInterval(applyTheme,60000); // re-check theme every minute for auto sunrise/sunset
   await loadAll();renderAll();
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
 window.onload=()=>{
   CFG=LS.get('los_cfg',{apiUrl:'',apiKey:'',mode:''});
+  applyTheme(); // apply theme early, even before init
   if(!CFG.mode){document.getElementById('setup').style.display='flex';}
   else{initApp();}
 };
@@ -1406,6 +1451,115 @@ function fmtTime(d){return d.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'
 function fmtDur(m){if(!m||m<=0)return'0m';const h=Math.floor(m/60),r=m%60;return h>0?(r>0?`${h}h ${r}m`:`${h}h`):`${m}m`;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(msg,dur=3000){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
+function normalizeDate(d){
+  if(!d)return'';if(d instanceof Date)return d.toISOString().split('T')[0];
+  const s=String(d).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  const p=new Date(s);return isNaN(p)?s:p.toISOString().split('T')[0];
+}
+
+// ═══ TIME DATE NAV ═══
+function shiftTimeDate(offset){
+  const el=document.getElementById('vd-date');
+  if(offset===0){el.value=TODAY;}
+  else{const d=new Date(el.value);d.setDate(d.getDate()+offset);el.value=d.toISOString().split('T')[0];}
+  renderTimeLog();renderTimeStats();
+}
+
+// ═══ TIME STATS (Screen Time style) ═══
+let timeViewMode='day';
+function setTimeView(mode,btn){
+  timeViewMode=mode;
+  document.querySelectorAll('.tv-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  renderTimeStats();
+}
+function getDateRange(mode,ref){
+  const d=new Date(ref);const dates=[];
+  if(mode==='day'){dates.push(ref);}
+  else if(mode==='week'){
+    const day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
+    const mon=new Date(d);mon.setDate(diff);
+    for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);dates.push(dd.toISOString().split('T')[0]);}
+  }else if(mode==='month'){
+    const y=d.getFullYear(),m=d.getMonth();
+    const daysInMonth=new Date(y,m+1,0).getDate();
+    for(let i=1;i<=daysInMonth;i++) dates.push(`${y}-${String(m+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`);
+  }
+  return dates;
+}
+function renderTimeStats(){
+  const ref=document.getElementById('vd-date')?.value||TODAY;
+  const dates=getDateRange(timeViewMode,ref);
+  const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  // Gather data per date per category
+  const perDate={};let maxDay=0;const catTotals={};
+  dates.forEach(dt=>{
+    const byC={};DB.time.filter(b=>b.date===dt).forEach(b=>{
+      const c=b.category||'admin';byC[c]=(byC[c]||0)+(+b.duration||0);
+      catTotals[c]=(catTotals[c]||0)+(+b.duration||0);
+    });
+    const total=Object.values(byC).reduce((s,v)=>s+v,0);
+    if(total>maxDay)maxDay=total;
+    perDate[dt]=byC;
+  });
+  const grandTotal=Object.values(catTotals).reduce((s,v)=>s+v,0);
+  // Big total
+  const bt=document.getElementById('time-big-total');
+  if(bt)bt.textContent=fmtDur(grandTotal);
+  // Chart
+  const chart=document.getElementById('time-chart');
+  if(chart){
+    if(dates.length<=1||maxDay===0){chart.innerHTML='';
+    }else{
+      let html='<div class="time-chart">';
+      dates.forEach(dt=>{
+        const byC=perDate[dt]||{};const total=Object.values(byC).reduce((s,v)=>s+v,0);
+        const pct=maxDay>0?(total/maxDay)*100:0;
+        const d=new Date(dt+'T12:00:00');
+        const lbl=timeViewMode==='week'?DAYS[((d.getDay()+6)%7)]:String(d.getDate());
+        html+=`<div class="time-col">`;
+        if(total>0){
+          // Stacked bar — each category gets a segment
+          const cats=Object.entries(byC).sort((a,b)=>b[1]-a[1]);
+          cats.forEach(([c,m])=>{
+            const cat=CATS[c]||CATS.admin;const h=(m/maxDay)*120;
+            html+=`<div class="time-col-bar" style="height:${h}px;background:${cat.color};width:100%"></div>`;
+          });
+        }
+        html+=`<div class="time-col-lbl">${lbl}</div></div>`;
+      });
+      html+='</div>';
+      chart.innerHTML=html;
+    }
+  }
+  // Breakdown
+  const bd=document.getElementById('time-breakdown');
+  if(bd){
+    const sorted=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
+    if(!sorted.length){bd.innerHTML='<div style="text-align:center;color:var(--t3);font-size:12px">No time logged</div>';return;}
+    bd.innerHTML=sorted.map(([c,m])=>{
+      const cat=CATS[c]||CATS.admin;const pct=grandTotal>0?Math.round((m/grandTotal)*100):0;
+      return`<div class="time-cat-row"><div class="time-cat-dot" style="background:${cat.color}"></div><span class="time-cat-name">${cat.emoji} ${cat.label}</span><span class="time-cat-dur">${fmtDur(m)}</span><span style="font-size:10px;color:var(--t3);width:32px;text-align:right">${pct}%</span></div>`;
+    }).join('');
+  }
+}
+
+// ═══ THEME ═══
+const SUN_TABLE={1:[5,30,19,0],2:[6,0,18,45],3:[6,15,18,15],4:[6,30,17,45],5:[6,45,17,25],6:[7,0,17,20],7:[6,55,17,30],8:[6,30,17,45],9:[6,0,18,5],10:[5,30,18,20],11:[5,10,18,40],12:[5,10,19,0]};
+function isDaylight(){
+  const now=new Date(),m=now.getMonth()+1,[rh,rm,sh,sm]=SUN_TABLE[m];
+  const mins=now.getHours()*60+now.getMinutes();
+  return mins>=rh*60+rm&&mins<sh*60+sm;
+}
+function applyTheme(){
+  const pref=CFG.theme||'auto';
+  let dark=true;
+  if(pref==='light')dark=false;
+  else if(pref==='auto')dark=!isDaylight();
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.content=dark?'#0d0d0d':'#f4f4f5';
+}
 function setSyncBadge(state){const el=document.getElementById('sync-badge');if(!el)return;el.className='sync-badge sync-'+state;el.textContent=state==='ok'?'● synced':state==='pending'?'⟳ syncing':state==='offline'?'◌ offline':'✕ error';}
 function catOptions(sel='prima-ops'){return Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===sel?'selected':''}>${v.emoji} ${v.label}</option>`).join('');}
 </script>
