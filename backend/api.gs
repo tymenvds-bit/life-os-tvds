@@ -79,7 +79,12 @@ function readSheet(name) {
   return {
     rows: rows.map(r => {
       const obj = {};
-      headers.forEach((h, i) => obj[h] = r[i] === '' ? '' : r[i]);
+      headers.forEach((h, i) => {
+        let v = r[i];
+        // Convert Date objects to YYYY-MM-DD strings to avoid timezone shift in JSON
+        if (v instanceof Date) v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        obj[h] = v === '' ? '' : v;
+      });
       return obj;
     }),
     headers

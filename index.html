@@ -1452,9 +1452,11 @@ function fmtDur(m){if(!m||m<=0)return'0m';const h=Math.floor(m/60),r=m%60;return
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(msg,dur=3000){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 function normalizeDate(d){
-  if(!d)return'';if(d instanceof Date)return d.toISOString().split('T')[0];
-  const s=String(d).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
-  const p=new Date(s);return isNaN(p)?s:p.toISOString().split('T')[0];
+  if(!d)return'';
+  // Use local timezone (not UTC) to avoid date shift in SAST (UTC+2)
+  const dt=d instanceof Date?d:new Date(String(d).trim());
+  if(isNaN(dt))return String(d).trim();
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
 }
 
 // ═══ TIME DATE NAV ═══
@@ -1479,7 +1481,7 @@ function getDateRange(mode,ref){
   else if(mode==='week'){
     const day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
     const mon=new Date(d);mon.setDate(diff);
-    for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);dates.push(dd.toISOString().split('T')[0]);}
+    for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);dates.push(dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0'));}
   }else if(mode==='month'){
     const y=d.getFullYear(),m=d.getMonth();
     const daysInMonth=new Date(y,m+1,0).getDate();
