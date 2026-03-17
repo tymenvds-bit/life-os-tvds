@@ -13,7 +13,8 @@ Personal life operating system for Tijmen van der Schyff.
 
 - Vanilla HTML/CSS/JS — no frameworks, no build step, no dependencies
 - Fonts: DM Sans, DM Mono, Lora (loaded from Google Fonts)
-- Dark theme with gold accents (`#c9a84c`)
+- Auto light/dark theme (Pretoria sunrise/sunset via `SUN_TABLE`) with manual override in Settings (`CFG.theme`: `auto`|`dark`|`light`)
+- Gold accent color (`#c9a84c`)
 
 ## Modules
 
@@ -21,7 +22,7 @@ Personal life operating system for Tijmen van der Schyff.
 |-----|-------|-------------|
 | Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown. Capture AI matches brain dump items to existing tasks via `task_updates`. |
 | Notes | Notes | Freeform notes with categories and tags |
-| Time | Time | Time tracking with live timer; duration-based blocks from capture (no start/end required) |
+| Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
 | Journal | Journal | Daily journal with mood tracking |
 | Vehicles | GQ_Patrol, GU_Patrol | Fuel/service/repair logs for two vehicles |
 | Home | HomeInventory | Household item tracking |
@@ -48,7 +49,7 @@ Personal life operating system for Tijmen van der Schyff.
 - `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
 - `calFetch(days)` / `calCreate(ev)` — Google Calendar API (via Apps Script)
 - `claude(prompt, system, max)` — Claude API call
-- `capture(mode)` — AI-powered natural language capture; sends existing open tasks to AI for matching; routes to task_updates, todos, notes, time, journal, calendar, fuel
+- `capture(mode)` — AI-powered natural language capture (modes: `standard`, `eod`, `whatsapp`, `fuel`); sends existing open tasks to AI for matching; routes to task_updates, todos, notes, time, journal, calendar, fuel
 - `buildPreview(parsed)` — renders editable preview with inline fields and delete buttons; stores data in `captureData` global
 - `collectPreviewEdits()` — reads edited values from preview DOM back into `captureData` before saving
 - `removePreviewItem(section, index)` — removes an item from preview and re-renders
@@ -65,6 +66,12 @@ Personal life operating system for Tijmen van der Schyff.
 - `shiftTimeDate(offset)` — navigate Time tab date (◀/▶ arrows, Today button)
 - `setTimeView(mode)` / `renderTimeStats()` — Screen Time-style visualization (day/week/month with stacked category bars)
 - `applyTheme()` / `isDaylight()` — auto light/dark theme based on Pretoria sunrise/sunset times; manual override in Settings
+- `loadAll()` — fetches all sheets from API + normalizes dates; loads calendar events
+- `renderAll()` calls: `renderTodos()`, `renderNotes()`, `renderTimeLog()`, `renderJournal()`, `renderCalendar()`, `renderVehicles()`, `renderHome()`, `renderStock()`, `renderSnapshot()`, `updateStats()`
+- `startTimer()` / `stopTimer()` — live timer with elapsed display in header
+- `addTimeBlock()` — manual time entry with start/end/title/category
+- `bulkParse()` — AI parses freeform time text into structured blocks
+- `quickAdd()` — quick task add from Capture tab
 
 ## Backend API Actions (api.gs)
 
