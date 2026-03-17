@@ -1147,24 +1147,42 @@ async function aiFocus(){
     const picks=JSON.parse(clean);
     const el=document.getElementById('focus-list');
     if(!picks.length){el.innerHTML='<div style="color:var(--t3);font-size:12px">No tasks selected. Try again.</div>';btn.disabled=false;btn.innerHTML='🤖 AI Pick';return;}
-    el.innerHTML=picks.map(p=>{
+    // Store picks for rendering
+    window._focusPicks=picks.map(p=>{
       const t=tasks.find(t=>String(t.id)==String(p.id))||tasks.find(t=>t.title.toLowerCase().includes((p.title||'').toLowerCase().slice(0,20)));
-      if(!t)return`<div style="padding:4px 0;font-size:12px;color:var(--t3)">⚠ Could not match: ${esc(p.title||p.reason||'unknown')}</div>`;
-      const cat=CATS[t.category]||CATS.admin;const pri=PRI[t.priority]||PRI.normal;
-      return `<div style="padding:6px 0;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:8px">
-        <div class="check" onclick="toggleTodo('${t.id}');setTimeout(()=>aiFocus(),500)" style="cursor:pointer">☐</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:500;color:var(--t)">${esc(t.title)}</div>
-          <div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(p.reason)}</div>
-        </div>
-        <span class="tag" style="background:${cat.color}22;color:${cat.color};font-size:9px">${cat.emoji}</span>
-      </div>`;
-    }).join('');
+      return{...p,matchedId:t?String(t.id):null};
+    });
+    renderFocusList();
   }catch(e){
     console.error('AI Focus error:',e);
     document.getElementById('focus-list').innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${esc(e.message||'Unknown')}. Check API key in Settings.</div>`;
   }
   btn.disabled=false;btn.innerHTML='🤖 AI Pick';
+}
+
+function renderFocusList(){
+  const el=document.getElementById('focus-list');
+  if(!window._focusPicks||!window._focusPicks.length){el.innerHTML='<div style="color:var(--t3);font-size:12px">No tasks selected.</div>';return;}
+  el.innerHTML=window._focusPicks.map(p=>{
+    if(!p.matchedId) return`<div style="padding:4px 0;font-size:12px;color:var(--t3)">⚠ Could not match: ${esc(p.title||p.reason||'unknown')}</div>`;
+    const t=DB.todos.find(t=>String(t.id)==p.matchedId);
+    if(!t) return'';
+    const done=getStatus(t)==='done';
+    const cat=CATS[t.category]||CATS.admin;
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:8px;${done?'opacity:.5':''}">
+      <div class="check${done?' done':''}" onclick="focusToggle('${t.id}')" style="cursor:pointer">${done?'✓':'☐'}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500;color:var(--t);${done?'text-decoration:line-through;color:var(--t3)':''}">${esc(t.title)}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px">${done?'✅ Done':esc(p.reason||'')}</div>
+      </div>
+      <span class="tag" style="background:${cat.color}22;color:${cat.color};font-size:9px">${cat.emoji}</span>
+    </div>`;
+  }).join('');
+}
+
+function focusToggle(id){
+  toggleTodo(id);
+  renderFocusList();
 }
 
 async function aiNextTask(){
