@@ -20,6 +20,8 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Tab | Sheet | Description |
 |-----|-------|-------------|
+| Dashboard | — | Command centre: time-based greeting, stat row (urgent/open/logged/done today/journal), AI Focus (3-5 tasks with tick-off), today's calendar, overdue list (interactive tick-off), time accountability (progress bar vs 8h target, top categories), waiting/in-progress status, stale task alerts. Default landing tab. |
+| Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), Email Briefing, Quick Add Task |
 | Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown. Capture AI matches brain dump items to existing tasks via `task_updates`. |
 | Notes | Notes | Freeform notes with categories and tags |
 | Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
@@ -70,7 +72,9 @@ Personal life operating system for Tijmen van der Schyff.
 - `setTimeView(mode)` / `renderTimeStats()` — Screen Time-style visualization (day/week/month with stacked category bars)
 - `applyTheme()` / `isDaylight()` — auto light/dark theme based on Pretoria sunrise/sunset times; manual override in Settings
 - `loadAll()` — fetches all sheets from API + normalizes dates; loads calendar events
-- `renderAll()` calls: `renderTodos()`, `renderNotes()`, `renderTimeLog()`, `renderJournal()`, `renderCalendar()`, `renderVehicles()`, `renderHome()`, `renderStock()`, `renderSnapshot()`, `updateStats()`
+- `renderDashboard()` — renders the full dashboard command centre (greeting, stats, focus, calendar, overdue, time, waiting, stale)
+- `dashToggle(id)` — toggle task done from dashboard and re-render
+- `renderAll()` calls: `renderTodos()`, `renderNotes()`, `renderTimeLog()`, `renderJournal()`, `renderCalendar()`, `renderVehicles()`, `renderHome()`, `renderStock()`, `renderDashboard()`, `updateStats()`
 - `startTimer()` / `stopTimer()` — live timer with elapsed display in header
 - `addTimeBlock()` — manual time entry with start/end/title/category
 - `bulkParse()` — AI parses freeform time text into structured blocks

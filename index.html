@@ -215,6 +215,25 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
 .empty-icon{font-size:26px;opacity:.4}
 .divider{height:1px;background:var(--b);margin:6px 0}
 
+/* DASHBOARD */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dash-full{grid-column:1/-1}
+.dash-section{background:var(--bg1);border:1px solid var(--b);border-radius:var(--rl);padding:12px 14px}
+.dash-section-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.dash-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3);font-family:'DM Mono',monospace}
+.dash-stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px}
+.dash-item{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--b);font-size:12px}
+.dash-item:last-child{border-bottom:none}
+.dash-check{width:16px;height:16px;border:2px solid var(--b2);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;transition:all .15s}
+.dash-check:hover{border-color:var(--gold)}
+.dash-check.done{background:var(--blue);border-color:var(--blue);color:#fff}
+.dash-item-body{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-progress{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:6px}
+.dash-progress-fill{height:100%;border-radius:2px;transition:width .3s}
+.dash-greeting{font-family:'Lora',serif;font-size:18px;font-weight:600;color:var(--t);margin-bottom:2px}
+.dash-subgreeting{font-size:12px;color:var(--t3);margin-bottom:12px}
+@media(max-width:600px){.dash-grid{grid-template-columns:1fr}.dash-stat-row{grid-template-columns:repeat(3,1fr)}}
+
 @media(max-width:600px){
   .pane{padding:10px}
   .two-pane{flex-direction:column}
@@ -264,7 +283,8 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
   </div>
 
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('capture')" id="tab-capture">⚡ Capture</button>
+    <button class="tab active" onclick="switchTab('dashboard')" id="tab-dashboard">🏠 Dashboard</button>
+    <button class="tab" onclick="switchTab('capture')" id="tab-capture">⚡ Capture</button>
     <button class="tab" onclick="switchTab('todos')" id="tab-todos">✅ Tasks</button>
     <button class="tab" onclick="switchTab('notes')" id="tab-notes">📝 Notes</button>
     <button class="tab" onclick="switchTab('time')" id="tab-time">⏱ Time</button>
@@ -276,8 +296,13 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
 
   <div class="content">
 
+    <!-- 🏠 DASHBOARD -->
+    <div id="pane-dashboard" class="pane active">
+      <div id="dash-content"></div>
+    </div>
+
     <!-- ⚡ CAPTURE -->
-    <div id="pane-capture" class="pane active">
+    <div id="pane-capture" class="pane">
       <div class="ai-box">
         <div class="ai-lbl">⚡ Universal Capture</div>
         <div style="font-size:11px;color:var(--t3);margin-bottom:7px;line-height:1.5">Paste anything — brain dump, WhatsApp, voice-to-text, fuel slip, end-of-day notes. AI routes to the right module automatically.</div>
@@ -301,17 +326,6 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
           <select id="q-pri"><option value="urgent">🔴 Urgent</option><option value="high">🟠 High</option><option value="normal" selected>🔵 Normal</option><option value="low">⚪ Low</option></select>
           <button class="btn btn-primary" onclick="quickAdd()">+ Add</button>
         </div>
-      </div>
-      <div class="card" id="snapshot-card">
-        <div class="card-title">Today's snapshot</div>
-        <div id="snapshot"></div>
-      </div>
-      <div class="card" id="focus-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div class="card-title" style="margin:0">Your focus today</div>
-          <button class="btn btn-ai btn-sm" onclick="aiFocus()" id="focus-btn">🤖 AI Pick</button>
-        </div>
-        <div id="focus-list"><div class="empty" style="padding:10px 0"><div style="font-size:11px;color:var(--t3)">Click AI Pick to get your 3-5 focus tasks for today</div></div></div>
       </div>
     </div>
 
@@ -1185,6 +1199,11 @@ function focusToggle(id){
   renderFocusList();
 }
 
+function dashToggle(id){
+  toggleTodo(id);
+  renderDashboard();
+}
+
 async function aiNextTask(){
   const btn=document.getElementById('next-btn');
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Thinking…';
@@ -1611,30 +1630,128 @@ function updateStats(){
   const so=document.getElementById('s-tasks');if(so)so.textContent=o;
   const sh=document.getElementById('s-hrs');if(sh)sh.textContent=fmtDur(h);
 }
-function renderSnapshot(){
-  const el=document.getElementById('snapshot');if(!el)return;
-  const urgent=DB.todos.filter(t=>getStatus(t)!=='done'&&t.priority==='urgent');
+function renderSnapshot(){renderDashboard();}
+function renderDashboard(){
+  const el=document.getElementById('dash-content');if(!el)return;
+  const open=DB.todos.filter(t=>getStatus(t)!=='done');
+  const urgent=open.filter(t=>t.priority==='urgent');
   const overdueList=DB.todos.filter(t=>isOverdue(t));
   const waitingList=DB.todos.filter(t=>getStatus(t)==='waiting');
   const staleList=DB.todos.filter(t=>isStale(t));
-  const todayTime=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
   const inProgress=DB.todos.filter(t=>getStatus(t)==='in-progress');
-  el.innerHTML=`<div class="today-grid" style="margin-bottom:8px">
-    <div class="today-stat"><div class="today-val" style="color:var(--red)">${urgent.length}</div><div class="today-lbl">Urgent</div></div>
-    <div class="today-stat"><div class="today-val" style="color:var(--gold)">${DB.todos.filter(t=>getStatus(t)!=='done').length}</div><div class="today-lbl">Open</div></div>
-    <div class="today-stat"><div class="today-val" style="color:var(--blue)">${fmtDur(todayTime)}</div><div class="today-lbl">Logged</div></div>
-    <div class="today-stat"><div class="today-val">${DB.journal.filter(j=>j.date===TODAY).length>0?'✓':'–'}</div><div class="today-lbl">Journal</div></div>
+  const todayTime=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
+  const hasJournal=DB.journal.filter(j=>j.date===TODAY).length>0;
+  const todayDone=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===TODAY).length;
+  // Today's calendar events
+  const todayCal=calEvents.filter(e=>e.date===TODAY);
+  // Time target (8 hours = 480 min)
+  const TARGET=480;
+  const timePct=Math.min(100,Math.round(todayTime/TARGET*100));
+  // Greeting based on time of day
+  const hour=new Date().getHours();
+  const greet=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
+  // Top categories today
+  const catTime={};DB.time.filter(b=>b.date===TODAY).forEach(b=>{const c=b.category||'admin';catTime[c]=(catTime[c]||0)+(+b.duration||0);});
+  const topCats=Object.entries(catTime).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
+  let html=`<div class="dash-greeting">${greet}, Tijmen</div>
+<div class="dash-subgreeting">${fmtDate(TODAY)} · ${open.length} open tasks · ${overdueList.length?`<span style="color:var(--red)">${overdueList.length} overdue</span>`:'nothing overdue'}</div>
+
+<!-- STATS ROW -->
+<div class="dash-stat-row">
+  <div class="today-stat"><div class="today-val" style="color:var(--red)">${urgent.length}</div><div class="today-lbl">Urgent</div></div>
+  <div class="today-stat"><div class="today-val" style="color:var(--gold)">${open.length}</div><div class="today-lbl">Open</div></div>
+  <div class="today-stat"><div class="today-val" style="color:var(--blue)">${fmtDur(todayTime)}</div><div class="today-lbl">Logged</div></div>
+  <div class="today-stat"><div class="today-val" style="color:var(--green)">${todayDone}</div><div class="today-lbl">Done today</div></div>
+  <div class="today-stat"><div class="today-val">${hasJournal?'✓':'–'}</div><div class="today-lbl">Journal</div></div>
+</div>
+
+<div class="dash-grid">
+
+<!-- FOCUS — left column -->
+<div class="dash-section">
+  <div class="dash-section-hdr">
+    <span class="dash-section-title">Your focus today</span>
+    <button class="btn btn-ai btn-sm" onclick="aiFocus()" id="focus-btn">🤖 AI Pick</button>
   </div>
-  ${overdueList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:3px;font-family:'DM Mono',monospace">🔥 ${overdueList.length} overdue</div>
-  ${overdueList.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)} <span class="overdue-tag">overdue</span></div>`).join('')}${overdueList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${overdueList.length-3} more</div>`:''}`:''}
-  ${waitingList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--pink);margin:6px 0 3px;font-family:'DM Mono',monospace">⏳ ${waitingList.length} waiting on others</div>
-  ${waitingList.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}</div>`).join('')}${waitingList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${waitingList.length-3} more</div>`:''}`:''}
-  ${staleList.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;margin:6px 0 3px;font-family:'DM Mono',monospace">💀 ${staleList.length} stale (14+ days untouched)</div>
-  ${staleList.slice(0,2).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t3)">${esc(t.title)}</div>`).join('')}${staleList.length>2?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${staleList.length-2} more — review these!</div>`:''}`:''}
-  ${inProgress.length?`<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin:6px 0 3px;font-family:'DM Mono',monospace">🔧 ${inProgress.length} in progress</div>
-  ${inProgress.slice(0,3).map(t=>`<div style="padding:4px 0;border-bottom:1px solid var(--b);font-size:12px;color:var(--t2)">${CATS[t.category]?.emoji||''} ${esc(t.title)}</div>`).join('')}`:''}`;
+  <div id="focus-list"><div style="font-size:11px;color:var(--t3);padding:8px 0">Click AI Pick to get your 3–5 focus tasks</div></div>
+</div>
+
+<!-- CALENDAR TODAY — right column -->
+<div class="dash-section">
+  <div class="dash-section-hdr">
+    <span class="dash-section-title">Schedule today</span>
+    <button class="btn btn-sm" onclick="switchTab('calendar')" style="font-size:10px">View all →</button>
+  </div>
+  ${todayCal.length?todayCal.slice(0,5).map(e=>`<div class="dash-item">
+    <span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--t3);width:42px;flex-shrink:0">${e.start||'All day'}</span>
+    <span class="dash-item-body" style="color:var(--t)">${esc(e.title)}</span>
+  </div>`).join(''):`<div style="font-size:11px;color:var(--t3);padding:8px 0">No events scheduled today</div>`}
+</div>
+
+<!-- OVERDUE — full width, interactive -->
+${overdueList.length?`<div class="dash-section dash-full">
+  <div class="dash-section-hdr">
+    <span class="dash-section-title" style="color:var(--red)">🔥 ${overdueList.length} overdue</span>
+    <button class="btn btn-sm" onclick="switchTab('todos');setTimeout(()=>{document.querySelector('.fbtn[onclick*=overdue]')?.click()},100)" style="font-size:10px">View all →</button>
+  </div>
+  ${overdueList.slice(0,5).map(t=>{
+    const cat=CATS[t.category]||CATS.admin;
+    const days=Math.floor((new Date(TODAY)-new Date(t.due))/86400000);
+    return`<div class="dash-item">
+      <div class="dash-check" onclick="dashToggle('${t.id}')">☐</div>
+      <span style="font-size:13px;flex-shrink:0">${cat.emoji}</span>
+      <span class="dash-item-body" style="color:var(--t)">${esc(t.title)}</span>
+      <span class="overdue-tag">${days}d late</span>
+    </div>`;}).join('')}
+  ${overdueList.length>5?`<div style="font-size:10px;color:var(--t3);padding:4px 0">+${overdueList.length-5} more</div>`:''}
+</div>`:``}
+
+<!-- TIME TODAY — left column -->
+<div class="dash-section">
+  <div class="dash-section-hdr">
+    <span class="dash-section-title">Time today</span>
+    <button class="btn btn-sm" onclick="switchTab('time')" style="font-size:10px">Log time →</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <span style="font-family:'DM Mono',monospace;font-size:22px;font-weight:500;color:var(--blue)">${fmtDur(todayTime)}</span>
+    <span style="font-size:11px;color:var(--t3)">of ${fmtDur(TARGET)} target</span>
+  </div>
+  <div class="dash-progress"><div class="dash-progress-fill" style="width:${timePct}%;background:${timePct>=75?'var(--green)':timePct>=40?'var(--gold)':'var(--red)'}"></div></div>
+  ${topCats.length?`<div style="margin-top:8px">${topCats.map(([c,m])=>{
+    const cat=CATS[c]||{emoji:'📋',label:c,color:'#888'};
+    return`<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0"><span>${cat.emoji}</span><span style="flex:1;color:var(--t2)">${cat.label}</span><span style="font-family:'DM Mono',monospace;color:var(--t)">${fmtDur(m)}</span></div>`;
+  }).join('')}</div>`:'<div style="font-size:11px;color:var(--t3);padding:4px 0">No time logged yet today</div>'}
+</div>
+
+<!-- WAITING + IN PROGRESS — right column -->
+<div class="dash-section">
+  ${waitingList.length?`<div class="dash-section-title" style="color:var(--pink);margin-bottom:6px">⏳ ${waitingList.length} waiting on others</div>
+  ${waitingList.slice(0,3).map(t=>`<div class="dash-item"><span style="font-size:13px">${(CATS[t.category]||CATS.admin).emoji}</span><span class="dash-item-body" style="color:var(--t2)">${esc(t.title)}</span></div>`).join('')}
+  ${waitingList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${waitingList.length-3} more</div>`:''}
+  ${inProgress.length?'<div style="height:1px;background:var(--b);margin:8px 0"></div>':''}`:''}
+  ${inProgress.length?`<div class="dash-section-title" style="color:var(--gold);margin-bottom:6px">🔧 ${inProgress.length} in progress</div>
+  ${inProgress.slice(0,3).map(t=>`<div class="dash-item"><span style="font-size:13px">${(CATS[t.category]||CATS.admin).emoji}</span><span class="dash-item-body" style="color:var(--t)">${esc(t.title)}</span></div>`).join('')}`:''}
+  ${!waitingList.length&&!inProgress.length?'<div class="dash-section-title" style="margin-bottom:6px">Status</div><div style="font-size:11px;color:var(--t3);padding:4px 0">No tasks waiting or in progress</div>':''}
+</div>
+
+<!-- STALE ALERT — full width, only if stale items exist -->
+${staleList.length?`<div class="dash-section dash-full" style="border-color:#333">
+  <div class="dash-section-hdr">
+    <span class="dash-section-title" style="color:#888">💀 ${staleList.length} stale — untouched 14+ days</span>
+    <button class="btn btn-sm" onclick="switchTab('todos');setTimeout(()=>{document.querySelector('.fbtn[onclick*=stale]')?.click()},100)" style="font-size:10px">Review →</button>
+  </div>
+  ${staleList.slice(0,3).map(t=>`<div class="dash-item"><span style="font-size:13px">${(CATS[t.category]||CATS.admin).emoji}</span><span class="dash-item-body" style="color:var(--t3)">${esc(t.title)}</span><button class="btn btn-sm" onclick="dashToggle('${t.id}')" style="font-size:10px;padding:2px 8px">Done</button></div>`).join('')}
+  ${staleList.length>3?`<div style="font-size:10px;color:var(--t3);padding:3px 0">+${staleList.length-3} more — decide: do, delegate, or delete</div>`:''}
+</div>`:``}
+
+</div><!-- end dash-grid -->`;
+
+  el.innerHTML=html;
+  // Re-render focus list if picks exist
+  if(window._focusPicks) renderFocusList();
 }
-function renderAll(){renderTodos();renderNotes();renderJournalSidebar();renderTimeLog();renderCalendar();renderInventory();renderVehicles();renderSnapshot();updateStats();}
+function renderAll(){renderTodos();renderNotes();renderJournalSidebar();renderTimeLog();renderCalendar();renderInventory();renderVehicles();renderDashboard();updateStats();}
 
 // ═══ TAB SWITCHING ═══
 function switchTab(tab){
@@ -1644,7 +1761,7 @@ function switchTab(tab){
   document.getElementById('tab-'+tab).classList.add('active');
   if(tab==='time')initTime();
   if(tab==='calendar'){calFetch(14).then(ev=>{calEvents=ev;renderCalendar();});renderCalendar();}
-  if(tab==='capture')renderSnapshot();
+  if(tab==='dashboard')renderDashboard();
   if(tab==='vehicles'){document.getElementById('veh-date').value=TODAY;renderVehicles();}
   if(tab==='inventory')renderInventory();
 }
