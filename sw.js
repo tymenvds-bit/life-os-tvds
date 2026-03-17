@@ -1,4 +1,4 @@
-const CACHE = 'life-os-v18';
+const CACHE = 'life-os-v19';
 const ASSETS = [
   '/life-os-tvds/',
   '/life-os-tvds/index.html',

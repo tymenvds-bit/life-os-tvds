@@ -89,6 +89,20 @@ textarea{resize:vertical;line-height:1.6}
 .preview-card textarea{width:100%;min-height:40px;resize:vertical;line-height:1.5}
 .preview-subtitle{font-size:10px;color:var(--t3);font-style:italic;margin-bottom:6px}
 
+/* EMAIL BRIEFING */
+.email-section{margin-bottom:10px}
+.email-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-family:'DM Mono',monospace;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.email-card{background:var(--bg1);border:1px solid var(--b);border-radius:var(--r);padding:9px 12px;margin-bottom:5px;border-left-width:3px}
+.email-card.urgent{border-left-color:var(--red)}
+.email-card.actionable{border-left-color:var(--gold)}
+.email-card.fyi{border-left-color:var(--blue)}
+.email-card.low{border-left-color:var(--t3)}
+.email-from{font-size:11px;color:var(--t2);font-family:'DM Mono',monospace}
+.email-subject{font-size:13px;font-weight:500;margin:2px 0}
+.email-summary{font-size:12px;color:var(--t2);line-height:1.5;margin:4px 0}
+.email-actions{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap}
+.email-date{font-size:10px;color:var(--t3);font-family:'DM Mono',monospace}
+
 /* LISTS */
 .list{display:flex;flex-direction:column;gap:4px}
 .todo-item{background:var(--bg1);border:1px solid var(--b);border-radius:var(--r);padding:9px 11px;border-left-width:3px}
@@ -273,9 +287,11 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
           <button class="btn btn-sm" onclick="capture('eod')">🌅 End of Day</button>
           <button class="btn btn-sm" onclick="capture('whatsapp')">💬 WhatsApp</button>
           <button class="btn btn-sm" onclick="capture('fuel')">⛽ Fuel Slip</button>
+          <button class="btn btn-sm" onclick="emailBriefing()" id="email-btn" style="border-color:#1a2a4a;color:var(--blue)">📬 Email Briefing</button>
         </div>
         <div id="cap-result" style="display:none" class="ai-result"></div>
         <div id="cap-preview" style="display:none;margin-top:8px"></div>
+        <div id="email-briefing" style="display:none;margin-top:8px"></div>
       </div>
       <div class="card">
         <div class="card-title">Quick add task</div>
@@ -615,6 +631,124 @@ async function calCreate(ev){
     const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'cal_create',event:ev})});
     return await r.json();
   }catch(e){console.error('calCreate error:',e);toast('Calendar error: '+e.message);return{error:'offline'};}
+}
+
+async function emailFetch(max=50){
+  if(!CFG.apiUrl){toast('Connect Google Sheets API first');return null;}
+  try{
+    const r=await fetch(`${CFG.apiUrl}?action=emails&max=${max}`);
+    return await r.json();
+  }catch(e){console.error('emailFetch error:',e);toast('Email fetch error: '+e.message);return null;}
+}
+
+async function emailBriefing(){
+  const btn=document.getElementById('email-btn');
+  const container=document.getElementById('email-briefing');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Fetching emails…';
+  container.style.display='none';
+
+  try{
+    // Step 1: Fetch unread emails from Gmail via Apps Script
+    const data=await emailFetch(50);
+    if(!data||!data.emails||data.emails.length===0){
+      container.innerHTML='<div class="empty" style="padding:12px"><div class="empty-icon">📬</div><div>No unread emails</div></div>';
+      container.style.display='block';
+      btn.disabled=false;btn.innerHTML='📬 Email Briefing';
+      return;
+    }
+
+    btn.innerHTML='<span class="spinner"></span> AI triaging '+data.emails.length+' emails…';
+
+    // Step 2: Build email list for AI triage
+    const emailList=data.emails.map((e,i)=>`#${i+1} | From: ${e.from} | Subject: ${e.subject} | Date: ${e.date} | Preview: ${e.snippet.replace(/\n/g,' ').substring(0,150)}`).join('\n');
+
+    const sys=`You are Tijmen van der Schyff's email triage assistant. CEO Prima Joinery, Pretoria.
+Today: ${TODAY}. Current time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}.
+
+Categorise each email into ONE category:
+- "urgent": Needs response/action TODAY. Deadlines, money, legal, unhappy clients.
+- "actionable": Needs a response or action but not time-critical. Within this week.
+- "fyi": Informational — read but no action needed. Newsletters, confirmations, receipts.
+- "low": Marketing, promotions, spam-adjacent, social media notifications. Can ignore.
+
+Return ONLY valid JSON array (no markdown fences):
+[{"index":1,"category":"urgent|actionable|fyi|low","subject":"original subject","from_short":"first name or company","summary":"1 sentence — what it is and what action is needed","suggested_task":"short task title if actionable, or empty string"}]
+
+Rules:
+- Summarise in plain English, be specific about what action Tijmen needs to take
+- suggested_task should be a clear action item (e.g. "Reply to Santi re staff ratings") or "" if no action needed
+- Keep summaries under 20 words
+- Sort within categories by importance`;
+
+    const raw=await claude(emailList,sys,2000);
+    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    let triaged;
+    try{triaged=JSON.parse(clean);}
+    catch{
+      const fix=await claude(`Fix this JSON array and return only valid JSON:\n${raw}`,'Return only valid JSON array.',800);
+      triaged=JSON.parse(fix.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim());
+    }
+
+    // Step 3: Render the briefing
+    const cats={urgent:{label:'🔴 Urgent — Action Today',items:[]},actionable:{label:'🟠 Actionable — This Week',items:[]},fyi:{label:'🔵 FYI — Read Only',items:[]},low:{label:'⚪ Low Priority / Skip',items:[]}};
+    triaged.forEach(e=>{
+      const cat=cats[e.category]||cats.fyi;
+      const orig=data.emails[e.index-1];
+      cat.items.push({...e,date:orig?.date||'',threadId:orig?.threadId||''});
+    });
+
+    let html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="ai-lbl" style="margin:0">📬 Email Briefing — '+data.total+' unread</div><button class="btn btn-sm" onclick="document.getElementById(\'email-briefing\').style.display=\'none\'">✕ Close</button></div>';
+
+    for(const[key,cat] of Object.entries(cats)){
+      if(!cat.items.length) continue;
+      html+=`<div class="email-section"><div class="email-section-title" style="color:var(--${key==='urgent'?'red':key==='actionable'?'gold':key==='fyi'?'blue':'t3'})">${cat.label} (${cat.items.length})</div>`;
+      for(const e of cat.items){
+        html+=`<div class="email-card ${key}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="email-from">${esc(e.from_short)}</span>
+            <span class="email-date">${esc(e.date)}</span>
+          </div>
+          <div class="email-subject">${esc(e.subject)}</div>
+          <div class="email-summary">${esc(e.summary)}</div>
+          <div class="email-actions">
+            ${e.suggested_task?`<button class="btn btn-sm" onclick="emailToTask(${JSON.stringify(esc(e.suggested_task)).replace(/"/g,'&quot;')})">✅ Create Task</button>`:''}
+          </div>
+        </div>`;
+      }
+      html+='</div>';
+    }
+
+    // Summary stats
+    const urgCount=cats.urgent.items.length;
+    const actCount=cats.actionable.items.length;
+    const fyiCount=cats.fyi.items.length;
+    const lowCount=cats.low.items.length;
+    html=`<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--red)">${urgCount}</div><div class="today-lbl">Urgent</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--gold)">${actCount}</div><div class="today-lbl">Action</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--blue)">${fyiCount}</div><div class="today-lbl">FYI</div></div>
+      <div class="today-stat" style="flex:1;min-width:60px"><div class="today-val" style="color:var(--t3)">${lowCount}</div><div class="today-lbl">Skip</div></div>
+    </div>`+html;
+
+    container.innerHTML=html;
+    container.style.display='block';
+
+  }catch(e){
+    console.error('emailBriefing error:',e);
+    container.innerHTML=`<div class="ai-result" style="display:block;color:var(--red)">Email briefing error: ${esc(e.message)}</div>`;
+    container.style.display='block';
+  }
+  btn.disabled=false;btn.innerHTML='📬 Email Briefing';
+}
+
+function emailToTask(title){
+  const t={id:uid(),title,category:'admin',priority:'normal',due:'',notes:'From email briefing',done:'0',createdAt:niso(),status:'open',progress:''};
+  DB.todos.unshift(t);
+  apiPost('append','Todos',{row:t});
+  renderTodos();renderSnapshot();updateStats();
+  toast('Task created: '+title);
+  // Visually mark the button as done
+  event.target.disabled=true;event.target.textContent='✅ Added';
 }
 
 async function loadAll(){

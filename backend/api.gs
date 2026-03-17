@@ -15,7 +15,7 @@ const SHEET_ID = '17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s';
 
 // Sheet definitions — columns per tab
 const SCHEMAS = {
-  Todos:         ['id','title','category','priority','due','notes','done','createdAt','aiBreakdown','status','progress'],
+  Todos:         ['id','title','category','priority','due','notes','done','createdAt','aiBreakdown','status','progress','updatedAt'],
   Notes:         ['id','title','body','category','tags','createdAt','updatedAt'],
   Time:          ['id','date','title','category','start','end','duration','notes','createdAt'],
   Journal:       ['id','date','body','mood','tags','createdAt'],
@@ -33,6 +33,7 @@ function doGet(e) {
     if (action === 'read') return jsonResponse(readSheet(sheet));
     if (action === 'ping') return jsonResponse({ ok: true, timestamp: new Date().toISOString() });
     if (action === 'calendar') return jsonResponse(listCalEvents(p.days || 14));
+    if (action === 'emails')  return jsonResponse(listUnreadEmails(p.max || 50));
   } catch(err) {
     return jsonResponse({ error: err.message });
   }
@@ -213,6 +214,32 @@ function fmtCalDate(d) {
 
 function fmtCalTime(d) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm');
+}
+
+// --- GMAIL ---
+
+function listUnreadEmails(max) {
+  var limit = Math.min(Number(max) || 50, 100);
+  var threads = GmailApp.search('is:unread in:inbox', 0, limit);
+  var emails = [];
+  for (var i = 0; i < threads.length; i++) {
+    var t = threads[i];
+    var msgs = t.getMessages();
+    var last = msgs[msgs.length - 1];
+    emails.push({
+      threadId: t.getId(),
+      messageId: last.getId(),
+      from: last.getFrom(),
+      to: last.getTo(),
+      subject: t.getFirstMessageSubject(),
+      snippet: last.getPlainBody().substring(0, 300),
+      date: Utilities.formatDate(last.getDate(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'),
+      labels: t.getLabels().map(function(l) { return l.getName(); }),
+      isStarred: t.hasStarredMessages(),
+      messageCount: msgs.length
+    });
+  }
+  return { emails: emails, total: emails.length };
 }
 
 // --- UTILITY FUNCTIONS ---

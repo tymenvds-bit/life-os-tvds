@@ -48,6 +48,9 @@ Personal life operating system for Tijmen van der Schyff.
 
 - `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
 - `calFetch(days)` / `calCreate(ev)` — Google Calendar API (via Apps Script)
+- `emailFetch(max)` — fetch unread emails from Gmail via Apps Script
+- `emailBriefing()` — AI-powered email triage: fetches unread emails, sends to Claude for categorization (urgent/actionable/fyi/low), renders briefing with one-click task creation
+- `emailToTask(title)` — creates a todo from an email briefing suggestion
 - `claude(prompt, system, max)` — Claude API call
 - `capture(mode)` — AI-powered natural language capture (modes: `standard`, `eod`, `whatsapp`, `fuel`); sends existing open tasks to AI for matching; routes to task_updates, todos, notes, time, journal, calendar, fuel
 - `buildPreview(parsed)` — renders editable preview with inline fields and delete buttons; stores data in `captureData` global
@@ -80,6 +83,7 @@ Personal life operating system for Tijmen van der Schyff.
 | `read` | GET | Read rows from a sheet |
 | `ping` | GET | Health check |
 | `calendar` | GET | List Google Calendar events (`?days=14`) |
+| `emails` | GET | List unread Gmail messages (`?max=50`). Uses `GmailApp.search('is:unread in:inbox')`. Returns threadId, from, subject, snippet, date, labels, messageCount. |
 | `append` | POST | Add a row to a sheet |
 | `write` | POST | Overwrite all rows in a sheet |
 | `update` | POST | Update a row by ID |
