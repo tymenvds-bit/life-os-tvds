@@ -88,6 +88,26 @@ Personal life operating system for Tijmen van der Schyff.
 | `cal_create` | POST | Create a Google Calendar event |
 | `cal_delete` | POST | Delete a Google Calendar event |
 
+## Data Architecture & Backup
+
+| Layer | Location | Purpose | Survives |
+|-------|----------|---------|----------|
+| **localStorage** | Browser (per device) | Offline-first cache, instant reads | Cleared if browser data wiped |
+| **Google Sheets** | Google account (`17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s`) | Source of truth for all data | Google's infrastructure, auto-versioned |
+| **Google Calendar** | Google account | Calendar events (independent of Life OS) | Standard Google backup |
+| **GitHub** | `tymenvds-bit/life-os-tvds` | Code versioning only (no user data) | Every commit recoverable |
+
+**Backup strategy**: Google Sheets IS the backup. Every write goes to Sheets via Apps Script. localStorage is just a fast cache.
+
+**Migration path** (if rebuilding the app):
+- Google Sheets data is universally readable — export to CSV/Excel/JSON anytime
+- Apps Script API (`?action=read&sheet=Todos`) returns all data as JSON
+- Any new app (React, Flutter, native) can connect to the same Sheets backend with zero data migration
+- Google Calendar events are independent — always accessible via Google Calendar API
+- **Data is never locked in** — the architecture was deliberately chosen for portability
+
+**Device setup**: Each new device needs API URLs + Anthropic key entered in Settings. Data syncs automatically from Sheets on first load.
+
 ## Future Development Roadmap
 
 ### 1. Meal Planning & Kitchen AI (New Module)
