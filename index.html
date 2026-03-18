@@ -2133,6 +2133,53 @@ function delComparison(id){
   apiPost('delete','VehicleComparisons',{id:String(id)});renderVehicles();toast('Comparison deleted');
 }
 
+function editComparison(id){
+  const c=DB.vehicle_comparisons.find(c=>String(c.id)===String(id));if(!c)return;
+  // Pre-fill the form fields
+  const set=(elId,val)=>{const el=document.getElementById(elId);if(el)el.value=val||'';};
+  set('ec-name',c.comparisonName||c.targetVehicle);set('ec-price',c.purchasePrice);
+  set('ec-rate',c.financeRate);set('ec-term',c.financeTerm);set('ec-kml',c.expectedKmPerL);
+  set('ec-maint',c.expectedMaintenancePerKm);set('ec-ins',c.insuranceAnnual);
+  set('ec-lic',c.licenceAnnual);set('ec-km',c.projectedKmPerYear);
+  // Delete the old one — user will re-add with edits
+  DB.vehicle_comparisons=DB.vehicle_comparisons.filter(cc=>String(cc.id)!==String(id));
+  apiPost('delete','VehicleComparisons',{id:String(id)});
+  renderVehicles();toast('Editing — make changes and click + Add Manual');
+}
+
+async function aiSuggestComparisons(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const v=getVehicle(curVeh);const stats=calcVehicleStats(curVeh);
+  const btn=document.getElementById('ai-comp-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Thinking…';}
+  const prompt=`I own a ${v.name} (${v.year||''} ${v.engine||''}, ${v.fuelType||'petrol'}).
+Current stats: ${Math.round(stats.annualKm)} km/year, ${stats.avgKmL.toFixed(1)} km/L, cost/km R${stats.costPerKm.toFixed(2)}.
+Purchase price was R${stats.purchasePrice.toLocaleString()}.
+
+Suggest exactly 3 comparison vehicles available in South Africa (March 2026 pricing):
+1. A DIRECT COMPARABLE — similar capability/class (e.g. if I have a 4x4, suggest another 4x4)
+2. A PRACTICAL ALTERNATIVE — what most people would replace this with for daily use
+3. THE CHEAPEST ECONOMICAL OPTION — absolute lowest running cost, new or good used (e.g. Suzuki Swift, Toyota Starlet, VW Polo Vivo)
+
+For each, return realistic 2026 South African prices, real fuel consumption figures, realistic insurance and licence costs.
+
+Return ONLY valid JSON array (no markdown):
+[{"name":"Vehicle Name","purchasePrice":0,"financeRate":11.75,"financeTerm":72,"expectedKmPerL":0,"expectedMaintenancePerKm":0,"insuranceAnnual":0,"licenceAnnual":0,"category":"comparable|practical|economical"}]`;
+  try{
+    const raw=await claude(prompt,'You are a South African vehicle market expert. Return only valid JSON array.',1500);
+    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    const suggestions=JSON.parse(clean);
+    // Pre-fill forms or directly add
+    for(const s of suggestions){
+      const entry={id:uid(),vehicleId:String(curVeh),comparisonName:s.name+(s.category?' ('+s.category+')':''),targetVehicle:s.name,purchasePrice:String(s.purchasePrice||0),financeRate:String(s.financeRate||11.75),financeTerm:String(s.financeTerm||0),expectedKmPerL:String(s.expectedKmPerL||8),expectedMaintenancePerKm:String(s.expectedMaintenancePerKm||1.5),insuranceAnnual:String(s.insuranceAnnual||5000),licenceAnnual:String(s.licenceAnnual||2000),projectedKmPerYear:String(Math.round(stats.annualKm)),assumptions:'AI suggested',results:'',lastRunDate:'',createdAt:niso()};
+      DB.vehicle_comparisons.push(entry);
+      await apiPost('append','VehicleComparisons',{row:entry});
+    }
+    renderVehicles();toast(`✅ Added ${suggestions.length} AI-suggested comparisons — review and edit, then run analysis`);
+  }catch(e){console.error('AI comparison error:',e);toast('Could not generate suggestions — try again');}
+  if(btn){btn.disabled=false;btn.innerHTML='🤖 AI Suggest Comparisons';}
+}
+
 function calcVehicleStats(vid){
   const v=getVehicle(vid);const fuel=getVehicleFuel(vid);const services=getVehicleServices(vid);const expenses=getVehicleExpenses(vid);
   const fuelWithKm=fuel.filter(f=>+f.kmPerL>0);
@@ -2534,8 +2581,10 @@ function renderEconomicsSub(box,v){
       <input id="ec-km" type="number" placeholder="Annual km (auto)" style="width:130px" value="${Math.round(stats.annualKm)||''}">
     </div>
     <div class="row">
-      <button class="btn btn-primary" onclick="addComparison()">+ Add Comparison</button>
+      <button class="btn btn-primary" onclick="addComparison()">+ Add Manual</button>
+      <button class="btn btn-ai" id="ai-comp-btn" onclick="aiSuggestComparisons()">🤖 AI Suggest Comparisons</button>
     </div>
+    <div style="font-size:10px;color:var(--t3);margin-top:4px">AI adds 3 vehicles: direct comparable, practical alternative, cheapest economical option. You can edit or delete before running analysis.</div>
   </div>`;
   // Existing comparisons
   if(comparisons.length){
@@ -2545,10 +2594,11 @@ function renderEconomicsSub(box,v){
       h+=`<div class="log-row" style="grid-template-columns:1fr auto">
         <div>
           <span style="font-weight:500">${esc(c.comparisonName||c.targetVehicle)}</span>
-          <span style="font-size:11px;color:var(--t3);margin-left:8px">${formatR(c.purchasePrice)}${+c.financeTerm?' · '+c.financeTerm+'mo finance':' · Cash'}</span>
+          <span style="font-size:11px;color:var(--t3);margin-left:8px">${formatR(c.purchasePrice)}${+c.financeTerm?' · '+c.financeTerm+'mo finance':' · Cash'} · ${c.expectedKmPerL||'?'} km/L · Ins ${formatR(c.insuranceAnnual)}/yr</span>
           ${hasResults?`<span style="font-size:10px;color:var(--green);margin-left:6px">✅ Analysed ${c.lastRunDate||''}</span>`:''}
         </div>
         <div style="display:flex;gap:4px">
+          <button class="btn-icon" onclick="editComparison('${c.id}')" title="Edit">✏️</button>
           <button class="btn-icon" onclick="delComparison('${c.id}')">🗑</button>
         </div>
       </div>`;
