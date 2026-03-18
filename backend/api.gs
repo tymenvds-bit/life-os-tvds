@@ -102,7 +102,17 @@ function readSheet(name) {
 
 function appendRow(name, row) {
   const sheet = getOrCreateSheet(name);
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // Auto-add missing columns from schema
+  if (SCHEMAS[name]) {
+    SCHEMAS[name].forEach(k => {
+      if (headers.indexOf(k) < 0 && row[k] !== undefined) {
+        const col = headers.length;
+        sheet.getRange(1, col + 1).setValue(k);
+        headers.push(k);
+      }
+    });
+  }
   const rowData = headers.map(h => row[h] !== undefined ? row[h] : '');
   sheet.appendRow(rowData);
   return { ok: true, id: row.id };
@@ -123,13 +133,19 @@ function writeAll(name, rows) {
 function updateRow(name, id, patch) {
   const sheet = getOrCreateSheet(name);
   const data = sheet.getDataRange().getValues();
-  const headers = data[0];
+  let headers = data[0];
   const idCol = headers.indexOf('id');
   if (idCol < 0) return { error: 'No id column' };
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][idCol]) === String(id)) {
       Object.entries(patch).forEach(([k, v]) => {
-        const col = headers.indexOf(k);
+        let col = headers.indexOf(k);
+        // Auto-add missing column if it's in the schema
+        if (col < 0 && SCHEMAS[name] && SCHEMAS[name].indexOf(k) >= 0) {
+          col = headers.length;
+          sheet.getRange(1, col + 1).setValue(k);
+          headers.push(k);
+        }
         if (col >= 0) sheet.getRange(i + 1, col + 1).setValue(v);
       });
       return { ok: true, id };
