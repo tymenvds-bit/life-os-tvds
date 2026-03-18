@@ -68,7 +68,11 @@ function doPost(e) {
 function getOrCreateSheet(name) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sheet = ss.getSheetByName(name);
+  // Case-insensitive fallback: find sheet ignoring case (prevents duplicate tabs)
   if (!sheet) {
+    const allSheets = ss.getSheets();
+    const match = allSheets.find(s => s.getName().toLowerCase() === name.toLowerCase());
+    if (match) return match;
     sheet = ss.insertSheet(name);
     const schema = SCHEMAS[name];
     if (schema) sheet.getRange(1, 1, 1, schema.length).setValues([schema]);

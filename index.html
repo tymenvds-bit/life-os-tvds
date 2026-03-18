@@ -599,10 +599,10 @@ async function apiFetch(sheet){
   const lsKey='los_'+sheet.toLowerCase();
   if(!CFG.apiUrl) return LS.get(lsKey,[]);
   try{
-    const r=await fetch(`${CFG.apiUrl}?action=read&sheet=${sheet}`);
+    const r=await fetch(`${CFG.apiUrl}?action=read&sheet=${sheet}&_=${Date.now()}`,{cache:'no-store'});
     const d=await r.json();
     const rows=d.rows||[];
-    LS.set(lsKey,rows); // Cache fresh Sheets data to localStorage
+    LS.set(lsKey,rows);
     return rows;
   }catch(e){console.warn('apiFetch fallback to localStorage for',sheet,e.message);return LS.get(lsKey,[]);}
 }
@@ -777,8 +777,8 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['todos','notes','time','journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders'];
-  const SHEET_MAP={'GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders'};
+  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders'];
+  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
     const key=SHEET_MAP[s]||s.toLowerCase();
@@ -1122,12 +1122,12 @@ function quickAdd(){
 function setFilter(f,btn){todoFilter=f;document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTodos();}
 async function toggleTodo(id){
   const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
-  if(getStatus(t)==='done'){t.done='0';t.status='open';}
-  else{t.done='1';t.status='done';}
-  t.updatedAt=niso();
+  const newDone=getStatus(t)==='done'?false:true;
+  t.done=newDone?'1':'0';t.status=newDone?'done':'open';t.updatedAt=niso();
   renderTodos();renderDashboard();updateStats();
   const res=await apiPost('update','Todos',{id:String(t.id),patch:{done:t.done,status:t.status,updatedAt:t.updatedAt}});
-  if(res.error) toast('Sync error: '+res.error);
+  if(res.error) toast('⚠️ Sync error: '+res.error);
+  else if(res.ok) console.log('✅ Toggle synced to Sheets:',t.title,'→',t.status);
 }
 function cycleStatus(id){
   const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
