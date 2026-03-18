@@ -459,41 +459,17 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
 
     <!-- 🚙 VEHICLES -->
     <div id="pane-vehicles" class="pane">
-      <div class="veh-tabs">
-        <button class="veh-tab active" onclick="setVehTab('GQ',this)">🚙 GQ Patrol (TD42T)</button>
-        <button class="veh-tab" onclick="setVehTab('GU',this)">🚙 GU Patrol (TB48)</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <select id="veh-selector" onchange="selectVehicle(this.value)" style="flex:1;min-width:180px;font-size:14px;font-weight:500;padding:10px 12px"></select>
+        <button class="btn btn-sm" onclick="openVehicleForm()">+ Add Vehicle</button>
       </div>
-      <div class="row" id="veh-stats"></div>
-      <div class="card">
-        <div class="card-title">Add entry</div>
-        <div class="row">
-          <select id="veh-type" onchange="toggleVehFields()">
-            <option value="fuel">⛽ Fuel fill</option>
-            <option value="service">🔧 Service</option>
-            <option value="repair">🛠 Repair</option>
-            <option value="inspection">🔍 Inspection</option>
-            <option value="tyre">🔄 Tyre</option>
-          </select>
-          <input id="veh-date" type="date" style="width:130px">
-          <input id="veh-odo" type="number" placeholder="Odometer (km)" style="width:140px">
-        </div>
-        <div id="veh-fuel-fields" class="row" style="margin-top:6px">
-          <input id="veh-litres" type="number" placeholder="Litres" style="width:90px">
-          <input id="veh-cpl" type="number" step="0.01" placeholder="R/litre" style="width:90px">
-          <input id="veh-station" placeholder="Station / location">
-        </div>
-        <div id="veh-other-fields" style="display:none;margin-top:6px">
-          <input id="veh-desc" placeholder="Description / parts / mechanic">
-          <div class="row" style="margin-top:6px">
-            <input id="veh-cost" type="number" placeholder="Total cost (R)" style="width:130px">
-          </div>
-        </div>
-        <button class="btn btn-primary" style="margin-top:8px" onclick="addVehEntry()">+ Add Entry</button>
+      <div class="veh-tabs" id="veh-sub-tabs">
+        <button class="veh-tab active" onclick="setVehSub('dashboard',this)">📊 Dashboard</button>
+        <button class="veh-tab" onclick="setVehSub('fuel',this)">⛽ Fuel</button>
+        <button class="veh-tab" onclick="setVehSub('services',this)">🔧 Services</button>
+        <button class="veh-tab" onclick="setVehSub('costs',this)">💰 Costs</button>
       </div>
-      <div class="card">
-        <div class="card-title" id="veh-log-title">Log</div>
-        <div id="veh-log"></div>
-      </div>
+      <div id="veh-content"></div>
     </div>
 
     <!-- 📦 INVENTORY -->
@@ -564,6 +540,11 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
   </div>
 </div>
 
+<!-- VEHICLE MODAL -->
+<div id="veh-modal" style="display:none" class="modal-overlay">
+  <div class="modal" id="veh-modal-body"></div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script>
@@ -601,12 +582,12 @@ let calEvents = [];
 let captureData = null;
 
 // ═══ STATE ═══
-let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[]};
+let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[]};
 let CFG = {apiUrl:'',apiKey:'',mode:'local'};
 let activeTimer = null, timerInterval = null, timerElapsed = 0;
 let todoFilter = 'all', expandedTodo = null;
 let selNote = null, selJournal = null;
-let curVeh = 'GQ', curInv = 'home', journalMood = '3';
+let curVeh = null, curVehSub = 'dashboard', curInv = 'home', journalMood = '3';
 
 // ═══ STORAGE ═══
 const LS = {
@@ -615,12 +596,15 @@ const LS = {
 };
 
 async function apiFetch(sheet){
-  if(!CFG.apiUrl) return LS.get('los_'+sheet.toLowerCase(),[]);
+  const lsKey='los_'+sheet.toLowerCase();
+  if(!CFG.apiUrl) return LS.get(lsKey,[]);
   try{
     const r=await fetch(`${CFG.apiUrl}?action=read&sheet=${sheet}`);
     const d=await r.json();
-    return d.rows||[];
-  }catch{return LS.get('los_'+sheet.toLowerCase(),[]);}
+    const rows=d.rows||[];
+    LS.set(lsKey,rows); // Cache fresh Sheets data to localStorage
+    return rows;
+  }catch(e){console.warn('apiFetch fallback to localStorage for',sheet,e.message);return LS.get(lsKey,[]);}
 }
 async function apiPost(action,sheet,data){
   // Update localStorage cache properly per action type
@@ -641,11 +625,13 @@ async function apiPost(action,sheet,data){
   if(!CFG.apiUrl) return {ok:true,local:true};
   try{
     const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,sheet,...data})});
-    const result=await r.json();
-    if(result.error) console.warn('⚠️ apiPost error:',action,sheet,result.error);
+    const text=await r.text();
+    let result;
+    try{result=JSON.parse(text);}catch{console.error('apiPost non-JSON response:',text.slice(0,200));return{error:'Non-JSON response from server'};}
+    if(result.error){console.warn('⚠️ apiPost error:',action,sheet,result.error);toast('⚠️ Sync failed: '+result.error);}
     else console.log('✅ apiPost:',action,sheet,data.id||'');
     return result;
-  }catch(e){console.error('❌ apiPost network error:',action,sheet,e.message);return{ok:false,local:true};}
+  }catch(e){console.error('❌ apiPost network error:',action,sheet,e.message);toast('⚠️ Offline — saved locally only');return{ok:false,local:true};}
 }
 
 async function calFetch(days=14){
@@ -791,20 +777,21 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['todos','notes','time','journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock'];
+  const sheets=['todos','notes','time','journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders'];
+  const SHEET_MAP={'GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
-    const key=s.toLowerCase().replace(' ','_');
-    if(s==='GQ_Patrol') DB.gq_patrol=rows;
-    else if(s==='GU_Patrol') DB.gu_patrol=rows;
-    else if(s==='HomeInventory') DB.home_inventory=rows;
-    else if(s==='PrimaStock') DB.prima_stock=rows;
-    else DB[key]=rows;
+    const key=SHEET_MAP[s]||s.toLowerCase();
+    DB[key]=rows;
   }));
-  // Normalize dates from Sheets (may come as Date objects or different formats)
+  // Normalize dates
   DB.time.forEach(b=>{b.date=normalizeDate(b.date);});
   DB.journal.forEach(j=>{j.date=normalizeDate(j.date);});
   DB.todos.forEach(t=>{if(t.due)t.due=normalizeDate(t.due);});
+  DB.fuel_logs.forEach(f=>{if(f.date)f.date=normalizeDate(f.date);});
+  DB.service_logs.forEach(s=>{if(s.date)s.date=normalizeDate(s.date);});
+  // Set default vehicle
+  if(DB.vehicles.length && !curVeh) curVeh=DB.vehicles[0].id;
   calEvents=await calFetch(14);
   setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
@@ -1085,7 +1072,19 @@ async function commitCapture(){
   if(p.notes?.length){for(const n of p.notes){const r={id:uid(),...n,tags:Array.isArray(n.tags)?n.tags.join(','):(n.tags||''),createdAt:niso(),updatedAt:niso()};DB.notes.unshift(r);await apiPost('append','Notes',{row:r});}added.push(p.notes.length+' notes');}
   if(p.time?.length){for(const b of p.time){const r={id:uid(),date:b.date||TODAY,title:b.title||'',category:b.category||'admin',start:'',end:'',duration:b.duration||0,createdAt:niso()};DB.time.unshift(r);await apiPost('append','Time',{row:r});}added.push(p.time.length+' time blocks');}
   if(p.journal?.length){for(const j of p.journal){const r={id:uid(),date:TODAY,...j,tags:Array.isArray(j.tags)?j.tags.join(','):(j.tags||''),createdAt:niso()};DB.journal.unshift(r);await apiPost('append','Journal',{row:r});}added.push(p.journal.length+' journal entries');}
-  if(p.fuel?.length){for(const f of p.fuel){const sheet=f.vehicle==='GU'?'GU_Patrol':'GQ_Patrol';const kml=f.odometer&&f.litres?(f.odometer/f.litres).toFixed(2):'';const r={id:uid(),date:f.date||TODAY,type:'fuel',odometer:f.odometer||'',litres:f.litres||'',cost_per_l:f.cost_per_l||'',total_cost:f.litres&&f.cost_per_l?(f.litres*f.cost_per_l).toFixed(2):'',km_l:kml,notes:f.station||''};if(sheet==='GQ_Patrol')DB.gq_patrol.unshift(r);else DB.gu_patrol.unshift(r);await apiPost('append',sheet,{row:r});}added.push(p.fuel.length+' fuel entries');}
+  if(p.fuel?.length){for(const f of p.fuel){
+    // Route to new FuelLogs sheet (use first active vehicle if no vehicleId)
+    const vid=f.vehicleId||curVeh||DB.vehicles[0]?.id||'';
+    const litres=+f.litres||0;const costPerL=+f.cost_per_l||0;const totalCost=litres&&costPerL?(litres*costPerL):+(f.total_cost||0);
+    const pricePerL=litres&&totalCost?(totalCost/litres):costPerL;
+    const prevFuel=getVehicleFuel(vid);const prevOdo=prevFuel.length?+prevFuel[0].odometer:0;
+    const odo=+f.odometer||0;const dist=prevOdo&&odo>prevOdo?odo-prevOdo:0;
+    const kmPerL=dist&&litres?(dist/litres).toFixed(1):'0';const costPerKm=dist&&totalCost?(totalCost/dist).toFixed(2):'0';
+    const r={id:uid(),vehicleId:String(vid),date:f.date||TODAY,odometer:String(odo),litres:String(litres),totalCost:String(totalCost.toFixed(2)),pricePerL:pricePerL.toFixed(2),kmPerL:String(kmPerL),costPerKm:String(costPerKm),distanceKm:String(dist),fuelType:f.fuel_type||'',station:f.station||'',cityPct:'50',isFullTank:'1',isMissed:'0',paymentMethod:'',notes:'',createdAt:niso()};
+    DB.fuel_logs.unshift(r);await apiPost('append','FuelLogs',{row:r});
+    // Update vehicle ODO
+    const veh=getVehicle(vid);if(veh&&odo>+(veh.currentOdo||0)){veh.currentOdo=String(odo);await apiPost('update','Vehicles',{id:String(vid),patch:{currentOdo:String(odo)}});}
+  }added.push(p.fuel.length+' fuel entries');}
   if(p.calendar?.length){
     let calOk=0;
     for(const ev of p.calendar){
@@ -1539,66 +1538,461 @@ async function createCalEvent(){
   document.getElementById('ev-title').value='';
 }
 
-// ═══ VEHICLES ═══
-function setVehTab(veh,btn){curVeh=veh;document.querySelectorAll('.veh-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderVehicles();}
-function toggleVehFields(){
-  const type=document.getElementById('veh-type').value;
-  document.getElementById('veh-fuel-fields').style.display=type==='fuel'?'flex':'none';
-  document.getElementById('veh-other-fields').style.display=type!=='fuel'?'block':'none';
+// ═══ VEHICLES (Fleet Manager) ═══
+function getVehicle(id){return DB.vehicles.find(v=>String(v.id)===String(id));}
+function getVehicleFuel(vid){return DB.fuel_logs.filter(f=>String(f.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(+b.odometer||0)-(+a.odometer||0));}
+function getVehicleServices(vid){return DB.service_logs.filter(s=>String(s.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function getVehicleReminders(vid){return DB.service_reminders.filter(r=>String(r.vehicleId)===String(vid)&&r.isActive!=='0');}
+function formatR(n){return n!=null&&n!==''?'R'+Number(n).toLocaleString('en-ZA',{minimumFractionDigits:0,maximumFractionDigits:0}):'–';}
+function formatRd(n){return n!=null&&n!==''?'R'+Number(n).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2}):'–';}
+
+function selectVehicle(id){curVeh=id;renderVehicles();}
+function setVehSub(sub,btn){
+  curVehSub=sub;
+  document.querySelectorAll('#veh-sub-tabs .veh-tab').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  renderVehicles();
 }
-function addVehEntry(){
-  const type=document.getElementById('veh-type').value;
-  const date=document.getElementById('veh-date').value||TODAY;
-  const odo=document.getElementById('veh-odo').value;
-  const sheet=curVeh==='GU'?'gu_patrol':'gq_patrol';
-  const sheetName=curVeh==='GU'?'GU_Patrol':'GQ_Patrol';
-  let entry={id:uid(),date,type,odometer:odo,notes:''};
-  if(type==='fuel'){
-    const litres=+document.getElementById('veh-litres').value;
-    const cpl=+document.getElementById('veh-cpl').value;
-    entry={...entry,litres,cost_per_l:cpl,total_cost:(litres*cpl).toFixed(2),km_l:'',notes:document.getElementById('veh-station').value};
+
+function openVehicleForm(editId){
+  const v=editId?getVehicle(editId):null;
+  const html=`<div class="modal-title">${v?'Edit':'Add'} Vehicle</div>
+    <div class="row" style="margin-bottom:6px"><input id="vf-name" placeholder="Name (e.g. Red GQ TB42)" value="${esc(v?.name||'')}"></div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-make" placeholder="Make" value="${esc(v?.make||'')}" style="flex:1">
+      <input id="vf-model" placeholder="Model" value="${esc(v?.model||'')}" style="flex:1">
+      <input id="vf-variant" placeholder="Variant" value="${esc(v?.variant||'')}" style="flex:1">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-year" type="number" placeholder="Year" value="${v?.year||''}" style="width:80px">
+      <input id="vf-engine" placeholder="Engine" value="${esc(v?.engine||'')}" style="flex:1">
+      <select id="vf-fueltype" style="width:100px">
+        <option value="petrol" ${v?.fuelType==='petrol'?'selected':''}>Petrol</option>
+        <option value="diesel" ${v?.fuelType==='diesel'?'selected':''}>Diesel</option>
+        <option value="electric" ${v?.fuelType==='electric'?'selected':''}>Electric</option>
+      </select>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-reg" placeholder="Reg Number" value="${esc(v?.regNumber||'')}" style="flex:1">
+      <input id="vf-tank" type="number" placeholder="Tank (L)" value="${v?.tankCapacityL||''}" style="width:90px">
+      <select id="vf-cat" style="width:100px">
+        <option value="personal" ${v?.category==='personal'?'selected':''}>Personal</option>
+        <option value="family" ${v?.category==='family'?'selected':''}>Family</option>
+        <option value="fleet" ${v?.category==='fleet'?'selected':''}>Fleet</option>
+      </select>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-pdate" type="date" value="${v?.purchaseDate||''}" style="width:140px">
+      <input id="vf-podo" type="number" placeholder="Purchase ODO" value="${v?.purchaseOdo||''}" style="width:130px">
+      <input id="vf-pprice" type="number" placeholder="Purchase Price (R)" value="${v?.purchasePrice||''}" style="flex:1">
+    </div>
+    <div class="row" style="margin-bottom:6px"><input id="vf-odo" type="number" placeholder="Current ODO (km)" value="${v?.currentOdo||''}"></div>
+    <textarea id="vf-notes" rows="2" placeholder="Notes…" style="margin-bottom:8px">${esc(v?.notes||'')}</textarea>
+    <div class="modal-actions">
+      ${v?`<button class="btn" style="color:var(--red)" onclick="deleteVehicle('${v.id}')">Delete</button>`:''}
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveVehicle('${editId||''}')">${v?'Save':'Add Vehicle'}</button>
+    </div>`;
+  document.getElementById('veh-modal-body').innerHTML=html;
+  document.getElementById('veh-modal').style.display='flex';
+}
+
+function saveVehicle(editId){
+  const g=id=>document.getElementById(id)?.value||'';
+  const name=g('vf-name').trim();if(!name){toast('Enter vehicle name');return;}
+  const data={name,make:g('vf-make'),model:g('vf-model'),variant:g('vf-variant'),year:g('vf-year'),engine:g('vf-engine'),fuelType:g('vf-fueltype'),regNumber:g('vf-reg'),vin:'',purchaseDate:g('vf-pdate'),purchaseOdo:g('vf-podo'),purchasePrice:g('vf-pprice'),tankCapacityL:g('vf-tank'),currentOdo:g('vf-odo'),isActive:'1',category:g('vf-cat'),notes:g('vf-notes')};
+  if(editId){
+    const v=getVehicle(editId);if(v)Object.assign(v,data);
+    apiPost('update','Vehicles',{id:String(editId),patch:data});
+    toast('Vehicle updated');
   } else {
-    entry={...entry,litres:'',cost_per_l:'',total_cost:document.getElementById('veh-cost').value,km_l:'',notes:document.getElementById('veh-desc').value};
+    const v={id:uid(),createdAt:niso(),...data};
+    DB.vehicles.unshift(v);apiPost('append','Vehicles',{row:v});
+    curVeh=v.id;
+    toast('Vehicle added');
   }
-  DB[sheet].unshift(entry);apiPost('append',sheetName,{row:entry});
-  document.getElementById('veh-litres')&&(document.getElementById('veh-litres').value='');
-  document.getElementById('veh-cpl')&&(document.getElementById('veh-cpl').value='');
-  document.getElementById('veh-station')&&(document.getElementById('veh-station').value='');
-  document.getElementById('veh-odo').value='';
-  renderVehicles();toast('Entry added');
+  closeModal();renderVehicles();
 }
+
+function deleteVehicle(id){
+  if(!confirm('Delete this vehicle and all its data?'))return;
+  DB.vehicles=DB.vehicles.filter(v=>String(v.id)!==String(id));
+  apiPost('delete','Vehicles',{id:String(id)});
+  curVeh=DB.vehicles[0]?.id||null;
+  closeModal();renderVehicles();toast('Vehicle deleted');
+}
+
+function closeModal(){document.getElementById('veh-modal').style.display='none';}
+
+// --- Fuel Log ---
+function addFuelLog(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const date=g('fl-date')||TODAY;
+  const odo=+g('fl-odo');const litres=+g('fl-litres');const totalCost=+g('fl-cost');
+  if(!odo||!litres||!totalCost){toast('Fill in ODO, litres and cost');return;}
+  const pricePerL=totalCost/litres;
+  const fuel=getVehicleFuel(curVeh);
+  const prevOdo=fuel.length?+fuel[0].odometer:0;
+  const distanceKm=prevOdo&&odo>prevOdo?odo-prevOdo:0;
+  const kmPerL=distanceKm&&litres?+(distanceKm/litres).toFixed(1):0;
+  const costPerKm=distanceKm&&totalCost?+(totalCost/distanceKm).toFixed(2):0;
+  const entry={id:uid(),vehicleId:String(curVeh),date,odometer:String(odo),litres:String(litres),totalCost:String(totalCost),pricePerL:pricePerL.toFixed(2),kmPerL:String(kmPerL),costPerKm:String(costPerKm),distanceKm:String(distanceKm),fuelType:g('fl-fueltype'),station:g('fl-station'),cityPct:'50',isFullTank:'1',isMissed:'0',paymentMethod:'',notes:g('fl-notes'),createdAt:niso()};
+  DB.fuel_logs.unshift(entry);apiPost('append','FuelLogs',{row:entry});
+  // Update vehicle currentOdo
+  const v=getVehicle(curVeh);if(v&&odo>+(v.currentOdo||0)){v.currentOdo=String(odo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(odo)}});}
+  ['fl-odo','fl-litres','fl-cost','fl-station','fl-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Fuel log added — '+kmPerL+' km/L');
+}
+
+function delFuelLog(id){
+  DB.fuel_logs=DB.fuel_logs.filter(f=>String(f.id)!==String(id));
+  apiPost('delete','FuelLogs',{id:String(id)});renderVehicles();toast('Fuel log deleted');
+}
+
+// --- Service Log ---
+function addServiceLog(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const date=g('sl-date')||TODAY;const desc=g('sl-desc').trim();
+  if(!desc){toast('Enter service description');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),date,odometer:g('sl-odo'),totalCost:g('sl-cost'),description:desc,serviceType:g('sl-type'),provider:g('sl-provider'),parts:'',notes:g('sl-notes'),createdAt:niso()};
+  DB.service_logs.unshift(entry);apiPost('append','ServiceLogs',{row:entry});
+  const odo=+entry.odometer;const v=getVehicle(curVeh);
+  if(v&&odo&&odo>+(v.currentOdo||0)){v.currentOdo=String(odo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(odo)}});}
+  ['sl-date','sl-odo','sl-cost','sl-desc','sl-provider','sl-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Service log added');
+}
+
+function delServiceLog(id){
+  DB.service_logs=DB.service_logs.filter(s=>String(s.id)!==String(id));
+  apiPost('delete','ServiceLogs',{id:String(id)});renderVehicles();toast('Service log deleted');
+}
+
+// --- Service Reminders ---
+function addServiceReminder(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const name=g('sr-name').trim();if(!name){toast('Enter reminder name');return;}
+  const v=getVehicle(curVeh);const currentOdo=+(v?.currentOdo||0);
+  const intervalKm=+g('sr-km')||0;const intervalMonths=+g('sr-months')||0;
+  const lastOdo=+g('sr-lastodo')||currentOdo;const lastDate=g('sr-lastdate')||TODAY;
+  const nextDueOdo=intervalKm?String(lastOdo+intervalKm):'';
+  let nextDueDate='';
+  if(intervalMonths){const d=new Date(lastDate);d.setMonth(d.getMonth()+intervalMonths);nextDueDate=d.toISOString().split('T')[0];}
+  const entry={id:uid(),vehicleId:String(curVeh),name,intervalKm:String(intervalKm),intervalMonths:String(intervalMonths),lastServiceDate:lastDate,lastServiceOdo:String(lastOdo),nextDueDate,nextDueOdo,isActive:'1',createdAt:niso()};
+  DB.service_reminders.push(entry);apiPost('append','ServiceReminders',{row:entry});
+  ['sr-name','sr-km','sr-months','sr-lastodo','sr-lastdate'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Reminder added');
+}
+
+function delReminder(id){
+  DB.service_reminders=DB.service_reminders.filter(r=>String(r.id)!==String(id));
+  apiPost('delete','ServiceReminders',{id:String(id)});renderVehicles();
+}
+
+function checkServiceReminders(vid){
+  const v=getVehicle(vid);const currentOdo=+(v?.currentOdo||0);
+  const reminders=getVehicleReminders(vid);
+  return reminders.map(r=>{
+    const nextOdo=+r.nextDueOdo||0;const nextDate=r.nextDueDate;
+    const kmRemaining=nextOdo?nextOdo-currentOdo:null;
+    let daysRemaining=null;
+    if(nextDate){const diff=Math.floor((new Date(nextDate)-new Date(TODAY))/(1000*60*60*24));daysRemaining=diff;}
+    let urgency='green';
+    if(kmRemaining!==null&&kmRemaining<0||daysRemaining!==null&&daysRemaining<0) urgency='red';
+    else if(kmRemaining!==null&&kmRemaining<1000||daysRemaining!==null&&daysRemaining<14) urgency='red';
+    else if(kmRemaining!==null&&kmRemaining<3000||daysRemaining!==null&&daysRemaining<30) urgency='amber';
+    return{...r,kmRemaining,daysRemaining,urgency,currentOdo};
+  }).sort((a,b)=>{const o={red:0,amber:1,green:2};return(o[a.urgency]||2)-(o[b.urgency]||2);});
+}
+
+function calcVehicleStats(vid){
+  const v=getVehicle(vid);const fuel=getVehicleFuel(vid);const services=getVehicleServices(vid);
+  const fuelWithKm=fuel.filter(f=>+f.kmPerL>0);
+  const avgKmL=fuelWithKm.length?fuelWithKm.reduce((s,f)=>s+(+f.kmPerL),0)/fuelWithKm.length:0;
+  const lastKmL=fuelWithKm[0]?+fuelWithKm[0].kmPerL:0;
+  const bestKmL=fuelWithKm.length?Math.max(...fuelWithKm.map(f=>+f.kmPerL)):0;
+  const totalFuelCost=fuel.reduce((s,f)=>s+(+f.totalCost||0),0);
+  const totalServiceCost=services.reduce((s,s2)=>s+(+s2.totalCost||0),0);
+  const purchasePrice=+(v?.purchasePrice||0);
+  const totalCost=purchasePrice+totalFuelCost+totalServiceCost;
+  const purchaseOdo=+(v?.purchaseOdo||0);const currentOdo=+(v?.currentOdo||0);
+  const totalKm=currentOdo-purchaseOdo;
+  const costPerKm=totalKm>0?totalCost/totalKm:0;
+  const fuelCostPerKm=totalKm>0?totalFuelCost/totalKm:0;
+  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo};
+}
+
+// --- Render ---
 function renderVehicles(){
-  const data=curVeh==='GU'?DB.gu_patrol:DB.gq_patrol;
-  const fuel=data.filter(e=>e.type==='fuel');
-  const lastFuel=fuel[0];
-  const avgKml=fuel.filter(e=>+e.km_l>0).reduce((s,e,_,a)=>s+(+e.km_l)/a.length,0);
-  const totalCost=data.reduce((s,e)=>s+(+e.total_cost||0),0);
-  const vs=document.getElementById('veh-stats');
-  if(vs)vs.innerHTML=`
-    <div class="veh-stat"><div class="veh-stat-val">${lastFuel?.odometer||'–'}</div><div class="veh-stat-lbl">Last odo (km)</div></div>
-    <div class="veh-stat"><div class="veh-stat-val">${avgKml>0?avgKml.toFixed(1)+'km/L':'–'}</div><div class="veh-stat-lbl">Avg fuel</div></div>
-    <div class="veh-stat"><div class="veh-stat-val">${fuel.length}</div><div class="veh-stat-lbl">Fills logged</div></div>
-    <div class="veh-stat"><div class="veh-stat-val">R${totalCost.toFixed(0)}</div><div class="veh-stat-lbl">Total cost</div></div>`;
-  const lt=document.getElementById('veh-log-title');if(lt)lt.textContent=`${curVeh} Patrol Log`;
-  const log=document.getElementById('veh-log');if(!log)return;
-  const TYPE_COLORS={fuel:'log-type-fuel',service:'log-type-service',repair:'log-type-repair',inspection:'log-type-service',tyre:'log-type-repair'};
-  if(!data.length){log.innerHTML='<div class="empty"><div class="empty-icon">🚙</div>No entries yet</div>';return;}
-  log.innerHTML=data.slice(0,50).map(e=>`<div class="log-row">
-    <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${e.date||''}</span>
-    <span class="log-type ${TYPE_COLORS[e.type]||'log-type-service'}">${e.type||''}</span>
-    <div style="min-width:0">
-      ${e.type==='fuel'?`<span style="color:var(--blue);font-family:'DM Mono',monospace">${e.litres}L @ R${e.cost_per_l}</span> ${e.km_l?`<span style="color:var(--green);margin-left:5px">${e.km_l}km/L</span>`:''} <span style="color:var(--t3)">${esc(e.notes)}</span>`:`<span>${esc(e.notes)}</span>`}
-      ${e.odometer?`<span style="font-size:10px;color:var(--t3);margin-left:5px">${e.odometer}km</span>`:''}
-    </div>
-    <div style="display:flex;align-items:center;gap:4px">
-      ${e.total_cost?`<span style="font-size:11px;color:var(--gold);font-family:'DM Mono',monospace">R${(+e.total_cost).toFixed(0)}</span>`:''}
-      <button class="btn-icon" onclick="delVehEntry('${e.id}')">🗑</button>
-    </div>
-  </div>`).join('');
+  // Populate vehicle selector
+  const sel=document.getElementById('veh-selector');
+  if(sel){
+    if(!DB.vehicles.length){
+      sel.innerHTML='<option value="">No vehicles — add one above</option>';
+    } else {
+      sel.innerHTML=DB.vehicles.filter(v=>v.isActive!=='0').map(v=>`<option value="${v.id}" ${String(v.id)===String(curVeh)?'selected':''}>${esc(v.name)}${v.year?' ('+v.year+')':''}${v.regNumber?' — '+esc(v.regNumber):''}</option>`).join('');
+    }
+  }
+  const box=document.getElementById('veh-content');if(!box)return;
+  if(!DB.vehicles.length||!curVeh){
+    box.innerHTML=`<div class="empty" style="padding:40px 16px"><div class="empty-icon">🚙</div><div>No vehicles yet</div><div style="font-size:12px;color:var(--t3);margin-top:4px">Click "+ Add Vehicle" to get started</div></div>`;
+    return;
+  }
+  const v=getVehicle(curVeh);if(!v){box.innerHTML='';return;}
+  if(curVehSub==='dashboard') renderVehicleDash(box,v);
+  else if(curVehSub==='fuel') renderFuelSub(box,v);
+  else if(curVehSub==='services') renderServicesSub(box,v);
+  else if(curVehSub==='costs') renderCostsSub(box,v);
 }
-function delVehEntry(id){
-  const sheet=curVeh==='GU'?'gu_patrol':'gq_patrol';const sheetName=curVeh==='GU'?'GU_Patrol':'GQ_Patrol';
-  DB[sheet]=DB[sheet].filter(e=>e.id!=id);apiPost('delete',sheetName,{id});renderVehicles();
+
+function renderVehicleDash(box,v){
+  const stats=calcVehicleStats(curVeh);
+  const reminders=checkServiceReminders(curVeh);
+  const fuel=getVehicleFuel(curVeh).slice(0,5);
+  const services=getVehicleServices(curVeh).slice(0,3);
+  // Stat cards
+  let h=`<div class="row" style="margin-bottom:10px">
+    <div class="veh-stat"><div class="veh-stat-val">${stats.avgKmL>0?stats.avgKmL.toFixed(1):'-'}</div><div class="veh-stat-lbl">Avg km/L</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:${stats.lastKmL<5?'var(--orange)':'var(--blue)'}">${stats.lastKmL>0?stats.lastKmL.toFixed(1):'-'}</div><div class="veh-stat-lbl">Last km/L</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--green)">${stats.bestKmL>0?stats.bestKmL.toFixed(1):'-'}</div><div class="veh-stat-lbl">Best km/L</div></div>
+    <div class="veh-stat"><div class="veh-stat-val">${stats.fillUps}</div><div class="veh-stat-lbl">Fill-ups</div></div>
+  </div>`;
+  // Efficiency chart (SVG polyline)
+  const chartFuel=getVehicleFuel(curVeh).filter(f=>+f.kmPerL>0).slice(0,20).reverse();
+  if(chartFuel.length>=2){
+    const vals=chartFuel.map(f=>+f.kmPerL);
+    const min=Math.min(...vals),max=Math.max(...vals),range=max-min||1;
+    const w=280,ht=70,pad=4;
+    const pts=vals.map((v,i)=>{const x=pad+(i/(vals.length-1))*(w-2*pad);const y=ht-pad-((v-min)/range)*(ht-2*pad);return`${x},${y}`;}).join(' ');
+    const dots=vals.map((v,i)=>{const x=pad+(i/(vals.length-1))*(w-2*pad);const y=ht-pad-((v-min)/range)*(ht-2*pad);return`<circle cx="${x}" cy="${y}" r="2.5" fill="var(--blue)"/>`;}).join('');
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Fuel efficiency trend</div>
+      <svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px"><polyline points="${pts}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round"/>${dots}</svg>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);font-family:'DM Mono',monospace"><span>${chartFuel[0]?.date||''}</span><span>${chartFuel[chartFuel.length-1]?.date||''}</span></div>
+    </div>`;
+  }
+  // Service reminders
+  if(reminders.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Service reminders</div>`;
+    reminders.forEach(r=>{
+      const bg=r.urgency==='red'?'#1a0808':r.urgency==='amber'?'#1a1500':'#0a1a0a';
+      const border=r.urgency==='red'?'var(--red)':r.urgency==='amber'?'var(--orange)':'var(--green)';
+      const txt=r.urgency==='red'?'var(--red)':r.urgency==='amber'?'var(--orange)':'var(--green)';
+      const label=r.kmRemaining!==null?(r.kmRemaining<=0?'OVERDUE':r.kmRemaining.toLocaleString()+' km'):
+        (r.daysRemaining!==null?(r.daysRemaining<=0?'OVERDUE':r.daysRemaining+' days'):'—');
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${bg};border-radius:var(--r);border-left:3px solid ${border};margin-bottom:5px">
+        <span style="color:var(--t2);font-size:13px">${esc(r.name)}</span>
+        <span style="color:${txt};font-size:12px;font-weight:600;font-family:'DM Mono',monospace">${label}</span>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  // Recent activity
+  const activity=[...fuel.map(f=>({type:'fuel',date:f.date,desc:`${f.litres}L @ ${esc(f.station||'—')}`,cost:f.totalCost,sub:f.kmPerL>0?f.kmPerL+' km/L':''})),
+    ...services.map(s=>({type:'service',date:s.date,desc:esc(s.description||'').slice(0,50),cost:s.totalCost,sub:esc(s.provider||'')}))].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,6);
+  if(activity.length){
+    h+=`<div class="card"><div class="card-title">Recent activity</div>`;
+    activity.forEach(a=>{
+      const icon=a.type==='fuel'?'⛽':'🔧';
+      h+=`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--b);font-size:12px">
+        <span style="font-size:15px">${icon}</span>
+        <div style="flex:1;min-width:0"><div style="color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.desc}</div>
+        <div style="font-size:10px;color:var(--t3)">${a.date}${a.sub?' · '+a.sub:''}</div></div>
+        ${a.cost?`<span style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${formatR(a.cost)}</span>`:''}
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  // Vehicle info footer
+  h+=`<div style="margin-top:8px;font-size:11px;color:var(--t3);display:flex;gap:12px;flex-wrap:wrap">
+    ${v.engine?`<span>🔧 ${esc(v.engine)}</span>`:''}
+    ${v.regNumber?`<span>🏷 ${esc(v.regNumber)}</span>`:''}
+    ${v.currentOdo?`<span>📏 ${Number(v.currentOdo).toLocaleString()} km</span>`:''}
+    <span style="cursor:pointer;color:var(--blue)" onclick="openVehicleForm('${v.id}')">✏️ Edit vehicle</span>
+  </div>`;
+  box.innerHTML=h;
+}
+
+function renderFuelSub(box,v){
+  const fuel=getVehicleFuel(curVeh);
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title">Log fuel</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="fl-date" type="date" value="${TODAY}" style="width:130px">
+      <input id="fl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="fl-litres" type="number" step="0.01" placeholder="Litres" style="width:100px">
+      <input id="fl-cost" type="number" step="0.01" placeholder="Total cost (R)" style="flex:1">
+      <select id="fl-fueltype" style="width:110px">
+        <option value="Unleaded 95">Unleaded 95</option><option value="Unleaded 93">Unleaded 93</option>
+        <option value="Diesel 50ppm">Diesel 50ppm</option><option value="Diesel 500ppm">Diesel 500ppm</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="fl-station" placeholder="Station name" style="flex:1">
+      <input id="fl-notes" placeholder="Notes" style="flex:1">
+      <button class="btn btn-primary" onclick="addFuelLog()">+ Add</button>
+    </div>
+  </div>`;
+  // Fuel history
+  h+=`<div class="card"><div class="card-title">Fuel history (${fuel.length})</div>`;
+  if(!fuel.length){h+=`<div class="empty"><div class="empty-icon">⛽</div>No fuel logs yet</div>`;}
+  else{
+    fuel.slice(0,50).forEach(f=>{
+      const kmL=+f.kmPerL;
+      const kmLColor=kmL>=6?'var(--green)':kmL>=5?'var(--blue)':'var(--orange)';
+      h+=`<div class="log-row" style="grid-template-columns:80px 1fr auto">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${f.date||''}</span>
+        <div style="min-width:0">
+          <span style="color:var(--blue);font-family:'DM Mono',monospace">${f.litres}L</span>
+          <span style="color:var(--t3);margin:0 4px">@</span>
+          <span style="color:var(--t2)">${esc(f.station||'—')}</span>
+          ${kmL>0?`<span style="color:${kmLColor};font-family:'DM Mono',monospace;margin-left:6px;font-weight:500">${kmL} km/L</span>`:''}
+          ${f.odometer?`<span style="font-size:10px;color:var(--t3);margin-left:4px">${Number(f.odometer).toLocaleString()}km</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(f.totalCost)}</span>
+          <button class="btn-icon" onclick="delFuelLog('${f.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
+  box.innerHTML=h;
+}
+
+function renderServicesSub(box,v){
+  const reminders=checkServiceReminders(curVeh);
+  const services=getVehicleServices(curVeh);
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title">Log service</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="sl-date" type="date" value="${TODAY}" style="width:130px">
+      <input id="sl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
+      <select id="sl-type" style="width:110px">
+        <option value="routine">🔧 Routine</option><option value="repair">🛠 Repair</option>
+        <option value="inspection">🔍 Inspection</option><option value="bodywork">🎨 Bodywork</option>
+      </select>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="sl-desc" placeholder="Description (e.g. Oil change, air filter)" style="flex:2">
+      <input id="sl-cost" type="number" placeholder="Cost (R)" style="width:110px">
+    </div>
+    <div class="row">
+      <input id="sl-provider" placeholder="Provider / mechanic" style="flex:1">
+      <input id="sl-notes" placeholder="Notes" style="flex:1">
+      <button class="btn btn-primary" onclick="addServiceLog()">+ Add</button>
+    </div>
+  </div>`;
+  // Service reminders
+  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Service reminders (${reminders.length})</div>`;
+  if(reminders.length){
+    reminders.forEach(r=>{
+      const bg=r.urgency==='red'?'#1a0808':r.urgency==='amber'?'#1a1500':'#0a1a0a';
+      const border=r.urgency==='red'?'var(--red)':r.urgency==='amber'?'var(--orange)':'var(--green)';
+      const txt=r.urgency==='red'?'var(--red)':r.urgency==='amber'?'var(--orange)':'var(--green)';
+      const kmLabel=r.kmRemaining!==null?(r.kmRemaining<=0?'OVERDUE by '+Math.abs(r.kmRemaining).toLocaleString()+'km':r.kmRemaining.toLocaleString()+' km'):'';
+      const dateLabel=r.daysRemaining!==null?(r.daysRemaining<=0?'OVERDUE by '+Math.abs(r.daysRemaining)+' days':r.daysRemaining+' days'):'';
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${bg};border-radius:var(--r);border-left:3px solid ${border};margin-bottom:5px">
+        <div><span style="color:var(--t2);font-size:13px">${esc(r.name)}</span>
+        <span style="font-size:10px;color:var(--t3);margin-left:8px">${r.intervalKm?'every '+Number(r.intervalKm).toLocaleString()+'km':''}${r.intervalKm&&r.intervalMonths?' / ':''}${r.intervalMonths?'every '+r.intervalMonths+'mo':''}</span></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="color:${txt};font-size:12px;font-weight:600;font-family:'DM Mono',monospace">${kmLabel||dateLabel||'—'}</span>
+          <button class="btn-icon" onclick="delReminder('${r.id}')" style="font-size:11px">🗑</button>
+        </div>
+      </div>`;
+    });
+  }
+  // Add reminder form
+  h+=`<div style="border-top:1px solid var(--b);margin-top:6px;padding-top:8px">
+    <div class="row" style="margin-bottom:4px">
+      <input id="sr-name" placeholder="Reminder name (e.g. Engine Oil)" style="flex:1">
+      <input id="sr-km" type="number" placeholder="Every X km" style="width:110px">
+      <input id="sr-months" type="number" placeholder="Every X months" style="width:120px">
+    </div>
+    <div class="row">
+      <input id="sr-lastodo" type="number" placeholder="Last done at ODO" value="${v.currentOdo||''}" style="width:150px">
+      <input id="sr-lastdate" type="date" value="${TODAY}" style="width:130px">
+      <button class="btn btn-primary btn-sm" onclick="addServiceReminder()">+ Reminder</button>
+    </div>
+  </div></div>`;
+  // Service history
+  h+=`<div class="card"><div class="card-title">Service history (${services.length})</div>`;
+  if(!services.length){h+=`<div class="empty"><div class="empty-icon">🔧</div>No service logs yet</div>`;}
+  else{
+    const TYPE_COLORS={routine:'log-type-service',repair:'log-type-repair',inspection:'log-type-service',bodywork:'log-type-repair'};
+    services.slice(0,50).forEach(s=>{
+      h+=`<div class="log-row" style="grid-template-columns:80px 60px 1fr auto">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${s.date||''}</span>
+        <span class="log-type ${TYPE_COLORS[s.serviceType]||'log-type-service'}">${s.serviceType||'service'}</span>
+        <div style="min-width:0">
+          <span style="color:var(--t2)">${esc(s.description||'')}</span>
+          ${s.provider?`<span style="font-size:10px;color:var(--t3);margin-left:4px">· ${esc(s.provider)}</span>`:''}
+          ${s.odometer?`<span style="font-size:10px;color:var(--t3);margin-left:4px">${Number(s.odometer).toLocaleString()}km</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          ${s.totalCost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(s.totalCost)}</span>`:''}
+          <button class="btn-icon" onclick="delServiceLog('${s.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
+  box.innerHTML=h;
+}
+
+function renderCostsSub(box,v){
+  const stats=calcVehicleStats(curVeh);
+  const fuel=getVehicleFuel(curVeh);
+  const services=getVehicleServices(curVeh);
+  let h=`<div class="row" style="margin-bottom:10px">
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--red)">${formatR(stats.totalCost)}</div><div class="veh-stat-lbl">Total spend</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--orange)">${stats.costPerKm>0?'R'+stats.costPerKm.toFixed(2):'-'}</div><div class="veh-stat-lbl">Cost/km</div></div>
+    <div class="veh-stat"><div class="veh-stat-val">${stats.totalKm>0?stats.totalKm.toLocaleString():'-'}</div><div class="veh-stat-lbl">Total km</div></div>
+  </div>`;
+  // Cost breakdown
+  const items=[
+    {label:'Purchase',amount:stats.purchasePrice,color:'var(--t3)'},
+    {label:'Fuel',amount:stats.totalFuelCost,color:'var(--blue)'},
+    {label:'Maintenance',amount:stats.totalServiceCost,color:'var(--green)'},
+  ].filter(i=>i.amount>0);
+  const maxAmt=Math.max(...items.map(i=>i.amount),1);
+  if(items.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Cost breakdown</div>`;
+    items.forEach(i=>{
+      const pct=Math.round(i.amount/stats.totalCost*100);
+      h+=`<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="color:var(--t2)">${i.label}</span>
+          <span style="color:var(--t);font-family:'DM Mono',monospace">${formatR(i.amount)} (${pct}%)</span>
+        </div>
+        <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${Math.round(i.amount/maxAmt*100)}%;background:${i.color};border-radius:3px"></div>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  // Monthly cost trend
+  const allCosts=[...fuel.map(f=>({date:f.date,amount:+f.totalCost||0})),...services.map(s=>({date:s.date,amount:+s.totalCost||0}))];
+  const months={};allCosts.forEach(c=>{const m=(c.date||'').slice(0,7);if(m){months[m]=(months[m]||0)+c.amount;}});
+  const sorted=Object.entries(months).sort((a,b)=>a[0].localeCompare(b[0])).slice(-12);
+  if(sorted.length>=2){
+    const maxM=Math.max(...sorted.map(s=>s[1]),1);
+    h+=`<div class="card"><div class="card-title">Monthly spend (last 12 months)</div>
+      <div style="display:flex;align-items:flex-end;gap:3px;height:100px;padding:0 4px">
+      ${sorted.map(([m,a])=>{
+        const ht=Math.round(a/maxM*90);
+        return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+          <span style="font-size:8px;color:var(--t3);font-family:'DM Mono',monospace">${formatR(a)}</span>
+          <div style="width:100%;height:${ht}px;background:var(--gold);border-radius:3px 3px 0 0;min-height:2px"></div>
+          <span style="font-size:8px;color:var(--t3);font-family:'DM Mono',monospace">${m.slice(5)}</span>
+        </div>`;
+      }).join('')}
+      </div>
+    </div>`;
+  }
+  box.innerHTML=h;
 }
 
 // ═══ INVENTORY ═══
@@ -1781,7 +2175,7 @@ function switchTab(tab){
   if(tab==='time')initTime();
   if(tab==='calendar'){calFetch(14).then(ev=>{calEvents=ev;renderCalendar();});renderCalendar();}
   if(tab==='dashboard')renderDashboard();
-  if(tab==='vehicles'){document.getElementById('veh-date').value=TODAY;renderVehicles();}
+  if(tab==='vehicles')renderVehicles();
   if(tab==='inventory')renderInventory();
 }
 
@@ -1810,7 +2204,7 @@ function saveSettings(){
   CFG.theme=themeRadio?themeRadio.value:'auto';
   LS.set('los_cfg',CFG);applyTheme();closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
-function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
+function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
 
 // ═══ INIT ═══
 async function initApp(){
@@ -1826,7 +2220,7 @@ async function initApp(){
   document.getElementById('tm-date')&&(document.getElementById('tm-date').value=TODAY);
   document.getElementById('vd-date')&&(document.getElementById('vd-date').value=TODAY);
   document.getElementById('bk-date')&&(document.getElementById('bk-date').value=TODAY);
-  document.getElementById('veh-date')&&(document.getElementById('veh-date').value=TODAY);
+  // veh-date removed — vehicle module now uses inline date fields
   applyTheme();setInterval(applyTheme,60000); // re-check theme every minute for auto sunrise/sunset
   await loadAll();renderAll();
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});

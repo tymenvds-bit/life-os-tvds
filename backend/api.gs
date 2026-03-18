@@ -21,6 +21,10 @@ const SCHEMAS = {
   Journal:       ['id','date','body','mood','tags','createdAt'],
   GQ_Patrol:     ['id','date','type','odometer','litres','cost_per_l','total_cost','km_l','notes'],
   GU_Patrol:     ['id','date','type','odometer','litres','cost_per_l','total_cost','km_l','notes'],
+  Vehicles:      ['id','name','make','model','variant','year','engine','fuelType','regNumber','vin','purchaseDate','purchaseOdo','purchasePrice','tankCapacityL','currentOdo','isActive','category','notes','createdAt'],
+  FuelLogs:      ['id','vehicleId','date','odometer','litres','totalCost','pricePerL','kmPerL','costPerKm','distanceKm','fuelType','station','cityPct','isFullTank','isMissed','paymentMethod','notes','createdAt'],
+  ServiceLogs:   ['id','vehicleId','date','odometer','totalCost','description','serviceType','provider','parts','notes','createdAt'],
+  ServiceReminders: ['id','vehicleId','name','intervalKm','intervalMonths','lastServiceDate','lastServiceOdo','nextDueDate','nextDueOdo','isActive','createdAt'],
   HomeInventory: ['id','category','name','qty','unit','location','serial','warranty','purchase_date','cost','notes'],
   PrimaStock:    ['id','category','name','qty','unit','supplier','reorder_at','cost_per_unit','notes','updatedAt'],
 };

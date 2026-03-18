@@ -26,7 +26,7 @@ Personal life operating system for Tijmen van der Schyff.
 | Notes | Notes | Freeform notes with categories and tags |
 | Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
 | Journal | Journal | Daily journal with mood tracking |
-| Vehicles | GQ_Patrol, GU_Patrol | Fuel/service/repair logs for two vehicles |
+| Vehicles | Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleChecks, VehicleTodos | Fleet manager: multi-vehicle support, fuel logging (manual + Claude Vision OCR), service tracking with km/date reminders, cost/TCO analysis, battery/tyre checks, per-vehicle todos. Currently uses legacy GQ_Patrol/GU_Patrol sheets (to be migrated) |
 | Home | HomeInventory | Household item tracking |
 | Prima Stock | PrimaStock | Business stock/inventory |
 | Calendar | Google Calendar API | Live events from Google Calendar; create via capture or Quick Event |
@@ -227,13 +227,194 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 - Convert image to base64, send to Claude with extraction prompt
 - Parse JSON response same as text capture → buildPreview → Save All
 
-### 5. Vehicle Module Corrections
-**Current issues to fix**:
-- Review and correct GQ_Patrol and GU_Patrol data structure
-- Verify fuel consumption calculations (km/L)
-- Service/repair log may need additional fields (workshop, invoice, warranty)
-- Odometer tracking and trip logging
-- Service interval reminders (next service due at X km or Y date)
+### 5. Vehicle Fleet Manager (Full Rebuild)
+**Context**: Vehicle data is fragmented across Fuelly (fuel logs), Excel (maintenance/cost tracking), Apple Notes (to-do checklists), and phone photos (receipts, odo readings, battery tests). No single source of truth. The fleet covers 6+ personal vehicles with future expansion to Prima Joinery fleet (~8 vehicles + trailers).
+
+**Decision: Build within Life OS** (not standalone app). Reasons:
+- Life OS exists to consolidate everything into one place — a separate app defeats the purpose
+- Google Sheets backend handles the data model fine (flatten relational tables into sheets)
+- Claude Vision OCR works the same regardless of stack — just an API call from the browser
+- Life OS already has capture flow, API layer, service worker, theme system
+- No new infrastructure needed (no Supabase, no Vercel, no separate auth)
+- The standalone spec (PATROL_FLEET_MANAGER_SPEC.md) has excellent data modeling and Claude Vision prompts — adopted as reference
+
+**Previous reference docs** (in Downloads, for data/prompts only):
+- `PATROL_FLEET_MANAGER_SPEC.md` — 420-line standalone spec (Next.js + Supabase), contains detailed PostgreSQL schema, Claude Vision OCR prompts, service reminder defaults, seed data, MoSCoW features
+- `PatrolFleetManager.jsx` — 549-line React prototype with dashboard, fuel history, service reminders, cost breakdown, receipt scanning flow mockup
+- `Red Patrol.xlsx` — existing Excel tracker with R163,819 total spend, 85 rows × 97 columns, parts inventory with Nissan part numbers
+
+**Vehicles to support**:
+| Name | Year | Engine | Reg | Purchase ODO | Purchase Price |
+|------|------|--------|-----|-------------|----------------|
+| Red GQ TB42 | 1993 | TB42 4.2L Petrol | CFV 428 GP | 178,400 | R120,000 |
+| GQ TD42T | 1997 | TD42T Turbo Diesel | — | — | — |
+| Datsun Safari | — | — | — | — | — |
+| KTM 500 XC-W | 2014 | 510cc Single | — | — | — |
+| Chev Bakkie | — | — | — | — | — |
+| Sym Orbit 2 (Elizabeth) | — | — | — | — | — |
+
+**Red GQ TB42 existing data summary**:
+- Current ODO: 209,570 (14 Mar 2026 service)
+- Fuel: 66 entries via Fuelly, 6,021L total, R131,462 fuel cost, avg 5.2 km/L
+- Maintenance: R92,019 (Excel), TCO: R334,971, R/km: R12.68
+- Insurance: R13,757 total, Licence: R3,790 total
+- Battery (17 Aug 2025): SOH 58%, SOC 11%, 12.07V — needs replacement
+- Tyres (17 Aug 2025): LF 8.8mm, RF 9.5mm, LR 7.7mm, RR 8.0mm
+- ~20 open to-do items, ~50+ completed since purchase
+
+**Google Sheets data model** (one sheet per data type):
+
+`Vehicles` — id, name, make, model, variant, year, engine, fuelType, regNumber, vin, purchaseDate, purchaseOdo, purchasePrice, tankCapacityL, currentOdo, isActive, category (personal/family/fleet), notes, createdAt
+
+`FuelLogs` — id, vehicleId, date, odometer, litres, totalCost, pricePerL, kmPerL (calc), costPerKm (calc), distanceKm (calc), fuelType, station, cityPct, isFullTank, isMissed, paymentMethod, notes, createdAt
+
+`ServiceLogs` — id, vehicleId, date, odometer, totalCost, description, serviceType (routine/repair/inspection/bodywork), provider, parts, notes, createdAt
+
+`ServiceReminders` — id, vehicleId, name, intervalKm, intervalMonths, lastServiceDate, lastServiceOdo, nextDueDate, nextDueOdo, isActive, createdAt
+
+`VehicleExpenses` — id, vehicleId, date, category (licence/insurance/parts/accessories/other), description, amount, supplier, notes, createdAt
+
+`VehicleChecks` — id, vehicleId, date, odometer, checkType (battery/tyres/brakes/general), data (JSON string), notes, createdAt
+
+`VehicleTodos` — id, vehicleId, category (maintenance/nice-to-have/in-car/sound), description, partNumber, isDone, completedDate, notes, sortOrder, createdAt
+
+**Claude Vision OCR prompts** (from standalone spec, adapted):
+
+Receipt scan:
+```
+You are a South African fuel receipt scanner. Extract ONLY valid JSON:
+{"date":"YYYY-MM-DD","time":"HH:MM","station_name":"string","fuel_type":"string","litres":number,"price_per_litre":number,"total_cost":number,"payment_method":"string","confidence":"high/medium/low"}
+Notes: Amounts in ZAR (R). Common stations: Engen, Shell, BP, Caltex, Total, Sasol. Fuel types: Unleaded 93/95, Diesel 50ppm/500ppm. Price/L typically R20-R28 (2024-2026). Use null for unknown fields.
+```
+
+Odometer scan:
+```
+Read the odometer from this vehicle dashboard photo. Return ONLY valid JSON:
+{"odometer":number,"confidence":"high/medium/low"}
+Odometer shows kilometres. Typically 6 digits.
+```
+
+**Service reminder defaults (TB42)**:
+| Item | Interval km | Interval months | Last Done ODO |
+|------|-------------|-----------------|---------------|
+| Engine Oil + Filter | 7,500 | 6 | 209,570 |
+| Air Filter | 7,500 | 6 | 209,570 |
+| Fuel Filter | 7,500 | 6 | 209,570 |
+| Spark Plugs | 15,000 | 12 | 209,570 |
+| Tyre Rotation | 10,000 | — | 209,570 |
+| Brake Fluid | 30,000 | 24 | ~199,246 |
+| Gearbox Oil | 40,000 | — | ~178,500 |
+| Transfer Case Oil | 40,000 | — | ~178,500 |
+| Diff Oil | 40,000 | — | ~178,500 |
+| Wheel Bearings | 50,000 | — | ~199,246 |
+
+**UI design** (within Life OS Vehicles tab):
+- Vehicle selector dropdown at top of tab
+- Sub-navigation: Dashboard | Fuel | Services | Costs | Checks | Todos
+- Dashboard: stat cards (avg km/L, last km/L, best km/L, fill-ups), efficiency trend chart (SVG polyline), service reminders with urgency badges (red <1000km, amber <3000km, green), recent activity feed
+- Fuel: history list with km/L colour coding, cost per fill chart, photo scan button (camera → Claude Vision → confirm → save)
+- Services: upcoming reminders + history list with provider/cost
+- Costs: TCO summary, cost/km, breakdown bars (purchase/fuel/maintenance/insurance/licence)
+- Checks: battery SOH/voltage history, tyre tread depth log
+- Todos: per-vehicle checklist with categories, done/not-done toggle
+- Fuel capture mode in Universal Capture: photo slip + odo + reg → auto-populate
+
+**Phase 1 — MVP** (current sprint):
+- [ ] Create Google Sheets: Vehicles, FuelLogs, ServiceLogs, ServiceReminders
+- [ ] Vehicle CRUD (add/edit vehicles in Settings)
+- [ ] Rebuild Vehicles tab with vehicle selector + sub-nav
+- [ ] Vehicle dashboard with stat cards + service reminders
+- [ ] Manual fuel log entry (date, odo, litres, cost, station)
+- [ ] Fuel history list with km/L calculation
+- [ ] Service log CRUD
+- [ ] Service reminder engine (km-based + date-based, colour-coded alerts)
+- [ ] Backend: add Vehicles/FuelLogs/ServiceLogs/ServiceReminders sheet support to api.gs
+
+**Phase 2 — Vision & Import**:
+- [ ] Claude Vision receipt OCR (photo → extract → confirm → save)
+- [ ] Claude Vision odometer OCR
+- [ ] Camera/file picker integration (`<input type="file" accept="image/*" capture="environment">`)
+- [ ] Fuelly CSV import (66 entries for TB42)
+- [ ] Excel import (Red Patrol expense/service data)
+- [ ] Fuel capture mode in Universal Capture
+
+**Phase 3 — Extended tracking**:
+- [ ] VehicleExpenses sheet + expense log UI
+- [ ] VehicleChecks sheet (battery, tyres) + check log UI
+- [ ] VehicleTodos sheet + per-vehicle checklist
+- [ ] Efficiency trend chart (SVG polyline, like React prototype)
+- [ ] Cost breakdown visualization
+- [ ] TCO comparison between vehicles
+
+**Phase 4 — Polish**:
+- [ ] Licence renewal tracking + calendar alerts
+- [ ] Insurance tracking + premium history
+- [ ] Parts inventory with part numbers (from Excel data)
+- [ ] Export vehicle data to Excel
+- [ ] Dashboard widget: "Next service due" summary across all vehicles
+- [ ] Push notification via service worker for overdue services
+
+**Phase 5 — Replacement Economics Calculator**:
+Monthly AI-driven analysis: "Should I keep this vehicle or replace it?" 10-year TCO projection comparing current vehicle vs alternatives.
+
+**Keep-current projection** (per vehicle):
+- Fuel: known km/L × projected annual km × fuel price trend (SA CPI-linked, ~5% p.a.)
+- Maintenance: escalating curve based on actual data. Use vehicle's real maintenance history to model increasing costs with age/km. TB42 baseline: R92k over 31k km = R2.97/km, trending up as components age.
+- Insurance: decreasing with vehicle value decline (known premium history)
+- Licence: flat-ish, adjusted for inflation
+- Resale value at exit: for classic 4x4s like GQ, floor price ~R80-120k (appreciating market). For depreciating vehicles, standard SA depreciation curve.
+- Finance: R0 if paid off
+
+**Replace-with-alternative projection**:
+- User inputs: target vehicle, purchase price (or finance terms — SA prime rate + margin, term months), expected km/L, expected maintenance schedule
+- Depreciation: new vehicle loses ~15-20% year 1, ~10%/year thereafter. Used vehicle depreciation varies.
+- Finance cost: total interest over loan term (SA interest rates, currently ~11.75% prime)
+- Insurance: higher on newer/more valuable vehicle
+- Maintenance: lower initially (warranty 3-5 years), then escalating
+- Resale value at year 10
+
+**Crossover analysis**:
+- Chart: two cumulative cost lines over 10 years (keep vs replace)
+- Crossover point = when replacing becomes cheaper than keeping
+- Factor in opportunity cost of capital (money spent on new vehicle could earn ~8-10% in SA money market)
+- Annual summary table: Year 1-10 with running totals for both scenarios
+- Net position: "Keeping the TB42 saves you R47,000 over 10 years" or "Replacing now saves R23,000 by year 6"
+
+**AI enhancement**:
+- Monthly auto-run using vehicle's real data (fuel logs, maintenance history, insurance records)
+- Claude analyses the numbers and writes a plain-English recommendation in Tijmen's voice
+- Surfaces on dashboard: "Vehicle Economics: TB42 is still R47k cheaper to keep over 10 years. Reassess when maintenance exceeds R4k/month."
+- Alerts when crossover point is approaching: "TB42 maintenance costs are accelerating. Replacement becomes economical in ~14 months at current trajectory."
+- Compares multiple alternatives simultaneously (e.g. TB42 vs new Hilux vs used Prado vs keep)
+
+**SA-specific factors**:
+- Interest rates (prime rate from SARB, updated periodically)
+- Fuel price regulated by government (petrol vs diesel pricing)
+- Import duties on vehicles (35%)
+- Insurance market (SA-specific providers, premiums)
+- Natis/eNatis licence fees
+- Toll costs if applicable (e-toll, N-routes)
+
+**Sheet**: `VehicleComparisons` — id, vehicleId, comparisonName, targetVehicle, purchasePrice, financeTerms, projectedKmPerYear, assumptions (JSON), results (JSON), lastRunDate, createdAt
+
+**Key functions**:
+- `runReplacementAnalysis(vehicleId, alternatives)` — calculates 10-year TCO projection
+- `renderReplacementReport(vehicleId)` — visual comparison with charts and recommendation
+- `getMaintenanceTrend(vehicleId)` — analyses historical maintenance spend to project future costs
+
+**Key functions to add**:
+- `renderVehicleDash()` — vehicle dashboard with stats, chart, reminders
+- `renderFuelLog()` — fuel history list with calculations
+- `addFuelLog(vehicleId, data)` — add fuel entry, auto-calc km/L and cost/km
+- `renderServiceLog()` — service history + upcoming reminders
+- `checkServiceReminders(vehicleId)` — returns due/overdue reminders
+- `scanReceipt(imageBase64)` — Claude Vision OCR for fuel slips
+- `scanOdometer(imageBase64)` — Claude Vision OCR for odo reading
+- `importFuellyCSV(csv)` — parse Fuelly export into FuelLogs
+- `calcTCO(vehicleId)` — total cost of ownership calculation
+- `runReplacementAnalysis(vehicleId, alternatives)` — 10-year keep vs replace projection
+- `renderReplacementReport(vehicleId)` — visual comparison chart + AI recommendation
+- `getMaintenanceTrend(vehicleId)` — project future maintenance from historical data
 
 ### 6. Smart Task Management (Productivity Science)
 **Problem**: 100+ tasks, limited hours in a day. Items get lost, nothing feels front-of-mind, overwhelm leads to paralysis.
