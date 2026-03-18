@@ -27,6 +27,8 @@ const SCHEMAS = {
   ServiceReminders: ['id','vehicleId','name','intervalKm','intervalMonths','lastServiceDate','lastServiceOdo','nextDueDate','nextDueOdo','isActive','createdAt'],
   VehicleExpenses: ['id','vehicleId','date','category','description','amount','frequency','supplier','notes','createdAt'],
   VehicleComparisons: ['id','vehicleId','comparisonName','targetVehicle','purchasePrice','financeRate','financeTerm','expectedKmPerL','expectedMaintenancePerKm','insuranceAnnual','licenceAnnual','projectedKmPerYear','assumptions','results','lastRunDate','createdAt'],
+  VehicleChecks: ['id','vehicleId','date','odometer','checkType','data','notes','createdAt'],
+  VehicleTodos: ['id','vehicleId','category','description','partNumber','isDone','completedDate','notes','sortOrder','createdAt'],
   HomeInventory: ['id','category','name','qty','unit','location','serial','warranty','purchase_date','cost','notes'],
   PrimaStock:    ['id','category','name','qty','unit','supplier','reorder_at','cost_per_unit','notes','updatedAt'],
 };
