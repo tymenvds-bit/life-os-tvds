@@ -331,12 +331,16 @@ Odometer shows kilometres. Typically 6 digits.
 - [ ] Backend: add Vehicles/FuelLogs/ServiceLogs/ServiceReminders sheet support to api.gs
 
 **Phase 2 — Vision & Import**:
-- [ ] Claude Vision receipt OCR (photo → extract → confirm → save)
-- [ ] Claude Vision odometer OCR
-- [ ] Camera/file picker integration (`<input type="file" accept="image/*" capture="environment">`)
-- [ ] Fuelly CSV import (66 entries for TB42)
+- [x] Claude Vision receipt OCR (photo → extract → confirm → save) — `scanReceipt()`, `openReceiptScanner()`
+- [x] Claude Vision odometer OCR — `scanOdometer()`, `openOdoScanner()`
+- [x] Camera/file picker integration (`<input type="file" accept="image/*" capture="environment">`) — `resizeImageToBase64()` resizes to 1024px
+- [x] Fuelly CSV import — `importFuellyCSV()` with dynamic header parsing
 - [ ] Excel import (Red Patrol expense/service data)
-- [ ] Fuel capture mode in Universal Capture
+- [x] Fuel capture mode in Universal Capture — fixed GQ/GU hardcode → dynamic `DB.vehicles`, AI prompt gets vehicle list
+- [x] `claudeVision(base64, mediaType, prompt, system, max)` — Vision API function
+- [x] 📷 Scan Receipt + 📷 ODO buttons in `renderFuelSub()` form
+- [x] 📷 Scan Slip button in Capture tab
+- [x] 📥 Import CSV button in fuel form header
 
 **Phase 3 — Extended tracking**:
 - [ ] VehicleExpenses sheet + expense log UI
@@ -408,9 +412,14 @@ Monthly AI-driven analysis: "Should I keep this vehicle or replace it?" 10-year 
 - `addFuelLog(vehicleId, data)` — add fuel entry, auto-calc km/L and cost/km
 - `renderServiceLog()` — service history + upcoming reminders
 - `checkServiceReminders(vehicleId)` — returns due/overdue reminders
-- `scanReceipt(imageBase64)` — Claude Vision OCR for fuel slips
-- `scanOdometer(imageBase64)` — Claude Vision OCR for odo reading
-- `importFuellyCSV(csv)` — parse Fuelly export into FuelLogs
+- `claudeVision(base64, mediaType, prompt, system, max)` — Claude Vision API call (image + text)
+- `resizeImageToBase64(file, maxPx)` — resize image to max dimension, return base64
+- `scanReceipt(base64, mediaType)` — Claude Vision OCR for SA fuel slips → JSON
+- `scanOdometer(base64, mediaType)` — Claude Vision OCR for odo reading → JSON
+- `openReceiptScanner()` — camera trigger → scan receipt → pre-fill fuel form
+- `openOdoScanner()` — camera trigger → scan odometer → fill odo field
+- `openCaptureScanner()` — camera trigger → scan receipt → populate capture textarea
+- `importFuellyCSV()` — file picker → parse Fuelly CSV → bulk import to FuelLogs
 - `calcTCO(vehicleId)` — total cost of ownership calculation
 - `runReplacementAnalysis(vehicleId, alternatives)` — 10-year keep vs replace projection
 - `renderReplacementReport(vehicleId)` — visual comparison chart + AI recommendation
