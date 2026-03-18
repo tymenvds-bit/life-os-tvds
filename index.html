@@ -486,6 +486,7 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         <button class="veh-tab" onclick="setVehSub('fuel',this)">⛽ Fuel</button>
         <button class="veh-tab" onclick="setVehSub('services',this)">🔧 Services</button>
         <button class="veh-tab" onclick="setVehSub('costs',this)">💰 Costs</button>
+        <button class="veh-tab" onclick="setVehSub('economics',this)">📈 Economics</button>
       </div>
       <div id="veh-content"></div>
     </div>
@@ -600,7 +601,7 @@ let calEvents = [];
 let captureData = null;
 
 // ═══ STATE ═══
-let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[]};
+let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[]};
 let CFG = {apiUrl:'',apiKey:'',mode:'local'};
 let activeTimer = null, timerInterval = null, timerElapsed = 0;
 let todoFilter = 'all', expandedTodo = null;
@@ -831,8 +832,8 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders'];
-  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders'};
+  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons'];
+  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
     const key=SHEET_MAP[s]||s.toLowerCase();
@@ -844,6 +845,7 @@ async function loadAll(){
   DB.todos.forEach(t=>{if(t.due)t.due=normalizeDate(t.due);});
   DB.fuel_logs.forEach(f=>{if(f.date)f.date=normalizeDate(f.date);});
   DB.service_logs.forEach(s=>{if(s.date)s.date=normalizeDate(s.date);});
+  DB.vehicle_expenses.forEach(e=>{if(e.date)e.date=normalizeDate(e.date);});
   // Set default vehicle
   if(DB.vehicles.length && !curVeh) curVeh=DB.vehicles[0].id;
   calEvents=await calFetch(14);
@@ -1632,6 +1634,8 @@ function getVehicle(id){return DB.vehicles.find(v=>String(v.id)===String(id));}
 function getVehicleFuel(vid){return DB.fuel_logs.filter(f=>String(f.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(+b.odometer||0)-(+a.odometer||0));}
 function getVehicleServices(vid){return DB.service_logs.filter(s=>String(s.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
 function getVehicleReminders(vid){return DB.service_reminders.filter(r=>String(r.vehicleId)===String(vid)&&r.isActive!=='0');}
+function getVehicleExpenses(vid){return DB.vehicle_expenses.filter(e=>String(e.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function getVehicleComparisons(vid){return DB.vehicle_comparisons.filter(c=>String(c.vehicleId)===String(vid));}
 function formatR(n){return n!=null&&n!==''?'R'+Number(n).toLocaleString('en-ZA',{minimumFractionDigits:0,maximumFractionDigits:0}):'–';}
 function formatRd(n){return n!=null&&n!==''?'R'+Number(n).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2}):'–';}
 
@@ -1676,6 +1680,11 @@ function openVehicleForm(editId){
       <input id="vf-pprice" type="number" placeholder="Purchase Price (R)" value="${v?.purchasePrice||''}" style="flex:1">
     </div>
     <div class="row" style="margin-bottom:6px"><input id="vf-odo" type="number" placeholder="Current ODO (km)" value="${v?.currentOdo||''}"></div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-lifekm" type="number" placeholder="Expected life (km)" value="${v?.expectedLifeKm||''}" style="flex:1">
+      <input id="vf-lifeyrs" type="number" placeholder="Expected life (years)" value="${v?.expectedLifeYears||''}" style="width:130px">
+      <input id="vf-annkm" type="number" placeholder="Annual km estimate" value="${v?.annualKmEstimate||''}" style="width:140px">
+    </div>
     <textarea id="vf-notes" rows="2" placeholder="Notes…" style="margin-bottom:8px">${esc(v?.notes||'')}</textarea>
     <div class="modal-actions">
       ${v?`<button class="btn" style="color:var(--red)" onclick="deleteVehicle('${v.id}')">Delete</button>`:''}
@@ -1689,7 +1698,7 @@ function openVehicleForm(editId){
 function saveVehicle(editId){
   const g=id=>document.getElementById(id)?.value||'';
   const name=g('vf-name').trim();if(!name){toast('Enter vehicle name');return;}
-  const data={name,make:g('vf-make'),model:g('vf-model'),variant:g('vf-variant'),year:g('vf-year'),engine:g('vf-engine'),fuelType:g('vf-fueltype'),regNumber:g('vf-reg'),vin:'',purchaseDate:g('vf-pdate'),purchaseOdo:g('vf-podo'),purchasePrice:g('vf-pprice'),tankCapacityL:g('vf-tank'),currentOdo:g('vf-odo'),isActive:'1',category:g('vf-cat'),notes:g('vf-notes')};
+  const data={name,make:g('vf-make'),model:g('vf-model'),variant:g('vf-variant'),year:g('vf-year'),engine:g('vf-engine'),fuelType:g('vf-fueltype'),regNumber:g('vf-reg'),vin:'',purchaseDate:g('vf-pdate'),purchaseOdo:g('vf-podo'),purchasePrice:g('vf-pprice'),tankCapacityL:g('vf-tank'),currentOdo:g('vf-odo'),isActive:'1',category:g('vf-cat'),notes:g('vf-notes'),expectedLifeKm:g('vf-lifekm'),expectedLifeYears:g('vf-lifeyrs'),annualKmEstimate:g('vf-annkm')};
   if(editId){
     const v=getVehicle(editId);if(v)Object.assign(v,data);
     apiPost('update','Vehicles',{id:String(editId),patch:data});
@@ -1944,21 +1953,216 @@ function checkServiceReminders(vid){
   }).sort((a,b)=>{const o={red:0,amber:1,green:2};return(o[a.urgency]||2)-(o[b.urgency]||2);});
 }
 
+// --- Vehicle Expenses ---
+const EXP_CATS={insurance:{emoji:'🛡',label:'Insurance',color:'var(--purple)'},licence:{emoji:'📋',label:'Licence',color:'var(--teal)'},tracker:{emoji:'📍',label:'Tracker',color:'var(--orange)'},tyres:{emoji:'🛞',label:'Tyres',color:'#b8860b'},'co-payment':{emoji:'💳',label:'Co-payment',color:'var(--red)'},parts:{emoji:'🔩',label:'Parts',color:'var(--blue)'},accessories:{emoji:'🎒',label:'Accessories',color:'var(--green)'},tolls:{emoji:'🛣',label:'Tolls',color:'var(--t3)'},other:{emoji:'📦',label:'Other',color:'var(--t2)'}};
+
+function addExpense(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const date=g('ex-date')||TODAY;const cat=g('ex-cat');const desc=g('ex-desc').trim();const amount=+g('ex-amount');
+  if(!amount){toast('Enter an amount');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),date,category:cat,description:desc||EXP_CATS[cat]?.label||cat,amount:String(amount),frequency:g('ex-freq')||'once',supplier:g('ex-supplier'),notes:g('ex-notes'),createdAt:niso()};
+  DB.vehicle_expenses.unshift(entry);apiPost('append','VehicleExpenses',{row:entry});
+  ['ex-desc','ex-amount','ex-supplier','ex-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Expense added: '+formatR(amount));
+}
+
+function delExpense(id){
+  DB.vehicle_expenses=DB.vehicle_expenses.filter(e=>String(e.id)!==String(id));
+  apiPost('delete','VehicleExpenses',{id:String(id)});renderVehicles();toast('Expense deleted');
+}
+
+// --- Service CSV Import ---
+async function importServicesCSV(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const input=document.createElement('input');
+  input.type='file';input.accept='.csv,text/csv';
+  input.onchange=async()=>{
+    const file=input.files[0];if(!file)return;
+    const text=await file.text();
+    const lines=text.trim().split('\n');
+    if(lines.length<2){toast('CSV appears empty');return;}
+    const parseCSVLine=line=>{
+      const result=[];let cur='';let inQuote=false;
+      for(let i=0;i<line.length;i++){
+        const c=line[i];
+        if(c==='"'){inQuote=!inQuote;}
+        else if(c===','&&!inQuote){result.push(cur.trim());cur='';}
+        else{cur+=c;}
+      }
+      result.push(cur.trim());return result;
+    };
+    const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,'').toLowerCase().trim());
+    const col=name=>headers.findIndex(h=>h.includes(name));
+    const dateCol=col('service_date')===-1?col('date'):col('service_date');
+    const odoCol=col('odometer')===-1?col('odo'):col('odometer');
+    const priceCol=col('price')===-1?col('cost'):col('price');
+    const typeCol=col('service_type')===-1?col('type'):col('service_type');
+    const subCol=col('sub_service');const notesCol=col('notes');
+    if(dateCol===-1){toast('Could not find date column in CSV');return;}
+    const rows=[];
+    for(let i=1;i<lines.length;i++){
+      const c=parseCSVLine(lines[i]);
+      if(!c[dateCol])continue;
+      const date=normalizeDate(c[dateCol]);
+      const odo=odoCol>=0?parseFloat(c[odoCol])||0:0;
+      const cost=priceCol>=0?parseFloat(c[priceCol])||0:0;
+      const sType=typeCol>=0?(c[typeCol]||'routine'):'routine';
+      const subs=subCol>=0?(c[subCol]||''):'';
+      const notes=notesCol>=0?(c[notesCol]||''):'';
+      // Build description from sub_service_types
+      const desc=subs?subs.replace(/_/g,' ').replace(/,/g,', '):(notes||sType);
+      rows.push({date,odometer:String(odo),totalCost:String(cost),description:desc,serviceType:sType==='note'?'inspection':sType,provider:'',parts:subs,notes});
+    }
+    const vName=getVehicle(curVeh)?.name||'this vehicle';
+    if(!confirm(`Import ${rows.length} service entries for ${vName}?`))return;
+    let imported=0;
+    for(const row of rows){
+      const r={id:uid(),vehicleId:String(curVeh),...row,createdAt:niso()};
+      DB.service_logs.push(r);
+      await apiPost('append','ServiceLogs',{row:r});
+      imported++;
+    }
+    DB.service_logs.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    renderVehicles();toast(`✅ Imported ${imported} service entries for ${vName}`);
+  };
+  input.click();
+}
+
+// --- Maintenance Trend Analysis ---
+function getMaintenanceTrend(vid){
+  const services=getVehicleServices(vid);
+  if(services.length<2)return{trend:0,projected:[]};
+  // Group by year
+  const byYear={};
+  services.forEach(s=>{
+    const yr=s.date?.slice(0,4);if(!yr)return;
+    byYear[yr]=(byYear[yr]||0)+(+s.totalCost||0);
+  });
+  const years=Object.keys(byYear).sort();
+  const vals=years.map(y=>({year:+y,cost:byYear[y]}));
+  // Simple linear regression
+  const n=vals.length;
+  const sumX=vals.reduce((s,v)=>s+v.year,0);const sumY=vals.reduce((s,v)=>s+v.cost,0);
+  const sumXY=vals.reduce((s,v)=>s+v.year*v.cost,0);const sumX2=vals.reduce((s,v)=>s+v.year*v.year,0);
+  const slope=n>1?(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX):0;
+  const intercept=(sumY-slope*sumX)/n;
+  const currentYear=new Date().getFullYear();
+  const projected=[];
+  for(let i=0;i<=5;i++){
+    const yr=currentYear+i;
+    projected.push({year:yr,cost:Math.max(0,Math.round(slope*yr+intercept))});
+  }
+  return{trend:slope,intercept,historical:vals,projected};
+}
+
+// --- Replacement Economics ---
+async function runReplacementAnalysis(vehicleId){
+  const v=getVehicle(vehicleId);if(!v)return;
+  const stats=calcVehicleStats(vehicleId);
+  const mTrend=getMaintenanceTrend(vehicleId);
+  const expenses=getVehicleExpenses(vehicleId);
+  const comparisons=getVehicleComparisons(vehicleId);
+  if(!comparisons.length){toast('Add at least one comparison vehicle first');return;}
+  toast('🤖 Running economics analysis…');
+  // Build data package for Claude
+  const keepData={
+    vehicle:v.name,purchasePrice:stats.purchasePrice,purchaseDate:v.purchaseDate,
+    currentOdo:stats.currentOdo,totalKm:stats.totalKm,
+    avgKmPerYear:Math.round(stats.annualKm),avgKmL:+stats.avgKmL.toFixed(1),
+    totalFuelCost:Math.round(stats.totalFuelCost),totalServiceCost:Math.round(stats.totalServiceCost),
+    totalExpenses:Math.round(stats.totalExpenses),
+    insuranceAnnual:Math.round(stats.insuranceCost/(stats.yearsOwned||1)),
+    licenceAnnual:Math.round(stats.licenceCost/(stats.yearsOwned||1)),
+    maintenanceTrend:mTrend.projected,
+    yearsOwned:+stats.yearsOwned.toFixed(1),annualCost:Math.round(stats.annualCost),
+    resaleEstimate:v.name.toLowerCase().includes('gq')?'R80000-120000 (classic 4x4, appreciating)':'Standard SA depreciation'
+  };
+  const alternatives=comparisons.map(c=>({
+    name:c.comparisonName||c.targetVehicle,purchasePrice:+c.purchasePrice,
+    financeRate:+c.financeRate||11.75,financeTerm:+c.financeTerm||0,
+    expectedKmL:+c.expectedKmPerL||8,expectedMaintPerKm:+c.expectedMaintenancePerKm||1.5,
+    insuranceAnnual:+c.insuranceAnnual||5000,licenceAnnual:+c.licenceAnnual||2000,
+    projectedKmPerYear:+c.projectedKmPerYear||stats.annualKm
+  }));
+  const prompt=`You are a South African vehicle economics analyst. Calculate a 10-year Total Cost of Ownership comparison.
+
+KEEP CURRENT VEHICLE:
+${JSON.stringify(keepData,null,2)}
+
+ALTERNATIVE VEHICLE(S):
+${JSON.stringify(alternatives,null,2)}
+
+SA ASSUMPTIONS: Prime rate 11.75%, fuel inflation 5% p.a., general CPI 5.5%, current Unleaded 95 price ~R21/L.
+New vehicle depreciation: 20% year 1, 12% per year thereafter. Used vehicle: 10% per year.
+Opportunity cost of capital: 8% (SA money market).
+Maintenance during warranty (3-5 years): R1000-2000/year. After warranty: escalating from R5000/year.
+
+Return ONLY valid JSON (no markdown, no code fences):
+{"keepScenario":{"years":[{"year":1,"fuel":0,"maintenance":0,"insurance":0,"licence":0,"other":0,"cumulative":0},...for years 1-10],"resaleValue":0,"netCost10Year":0},
+"alternatives":[{"name":"","years":[{"year":1,"fuel":0,"maintenance":0,"insurance":0,"licence":0,"finance":0,"depreciation":0,"cumulative":0},...for years 1-10],"resaleValue":0,"netCost10Year":0}],
+"crossoverYear":null,"recommendation":"2-3 sentence recommendation in Tijmen's voice — direct, practical, no corporate jargon. Include the ZAR difference."}`;
+
+  try{
+    const raw=await claude(prompt,'You are a South African vehicle economics analyst. Return only valid JSON.',3000);
+    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    const results=JSON.parse(clean);
+    // Save results to the first comparison
+    const comp=comparisons[0];
+    comp.results=JSON.stringify(results);comp.lastRunDate=TODAY;
+    apiPost('update','VehicleComparisons',{id:String(comp.id),patch:{results:comp.results,lastRunDate:TODAY}});
+    renderVehicles();
+    toast('✅ Economics analysis complete');
+    return results;
+  }catch(e){console.error('Economics analysis error:',e);toast('Analysis failed — try again');return null;}
+}
+
+function addComparison(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const name=g('ec-name').trim();const price=+g('ec-price');
+  if(!name||!price){toast('Enter vehicle name and price');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),comparisonName:name,targetVehicle:name,purchasePrice:String(price),financeRate:g('ec-rate')||'11.75',financeTerm:g('ec-term')||'0',expectedKmPerL:g('ec-kml')||'8',expectedMaintenancePerKm:g('ec-maint')||'1.5',insuranceAnnual:g('ec-ins')||'5000',licenceAnnual:g('ec-lic')||'2000',projectedKmPerYear:g('ec-km')||'',assumptions:'',results:'',lastRunDate:'',createdAt:niso()};
+  DB.vehicle_comparisons.push(entry);apiPost('append','VehicleComparisons',{row:entry});
+  ['ec-name','ec-price','ec-rate','ec-term','ec-kml','ec-maint','ec-ins','ec-lic','ec-km'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Comparison vehicle added');
+}
+
+function delComparison(id){
+  DB.vehicle_comparisons=DB.vehicle_comparisons.filter(c=>String(c.id)!==String(id));
+  apiPost('delete','VehicleComparisons',{id:String(id)});renderVehicles();toast('Comparison deleted');
+}
+
 function calcVehicleStats(vid){
-  const v=getVehicle(vid);const fuel=getVehicleFuel(vid);const services=getVehicleServices(vid);
+  const v=getVehicle(vid);const fuel=getVehicleFuel(vid);const services=getVehicleServices(vid);const expenses=getVehicleExpenses(vid);
   const fuelWithKm=fuel.filter(f=>+f.kmPerL>0);
   const avgKmL=fuelWithKm.length?fuelWithKm.reduce((s,f)=>s+(+f.kmPerL),0)/fuelWithKm.length:0;
   const lastKmL=fuelWithKm[0]?+fuelWithKm[0].kmPerL:0;
   const bestKmL=fuelWithKm.length?Math.max(...fuelWithKm.map(f=>+f.kmPerL)):0;
   const totalFuelCost=fuel.reduce((s,f)=>s+(+f.totalCost||0),0);
   const totalServiceCost=services.reduce((s,s2)=>s+(+s2.totalCost||0),0);
+  // Expense categories
+  const expByCat=(cat)=>expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(+e.amount||0),0);
+  const insuranceCost=expByCat('insurance');const licenceCost=expByCat('licence');
+  const trackerCost=expByCat('tracker');const tyreCost=expByCat('tyres');
+  const coPaymentCost=expByCat('co-payment');
+  const otherExpCost=expenses.filter(e=>!['insurance','licence','tracker','tyres','co-payment'].includes(e.category)).reduce((s,e)=>s+(+e.amount||0),0);
+  const totalExpenses=expenses.reduce((s,e)=>s+(+e.amount||0),0);
   const purchasePrice=+(v?.purchasePrice||0);
-  const totalCost=purchasePrice+totalFuelCost+totalServiceCost;
+  const totalCost=purchasePrice+totalFuelCost+totalServiceCost+totalExpenses;
   const purchaseOdo=+(v?.purchaseOdo||0);const currentOdo=+(v?.currentOdo||0);
   const totalKm=currentOdo-purchaseOdo;
   const costPerKm=totalKm>0?totalCost/totalKm:0;
   const fuelCostPerKm=totalKm>0?totalFuelCost/totalKm:0;
-  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo};
+  // Time-based averages
+  const purchaseDate=v?.purchaseDate?new Date(v.purchaseDate):null;
+  const monthsOwned=purchaseDate?Math.max(1,Math.round((new Date()-purchaseDate)/(1000*60*60*24*30.44))):0;
+  const yearsOwned=monthsOwned/12;
+  const annualCost=yearsOwned>0?totalCost/yearsOwned:0;
+  const monthlyAvgCost=monthsOwned>0?totalCost/monthsOwned:0;
+  // Annual km estimate from actual usage
+  const annualKm=+(v?.annualKmEstimate||0)||(yearsOwned>0.25?totalKm/yearsOwned:0);
+  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,totalExpenses,insuranceCost,licenceCost,trackerCost,tyreCost,coPaymentCost,otherExpCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo,monthsOwned,yearsOwned,annualCost,monthlyAvgCost,annualKm};
 }
 
 // --- Render ---
@@ -1982,6 +2186,7 @@ function renderVehicles(){
   else if(curVehSub==='fuel') renderFuelSub(box,v);
   else if(curVehSub==='services') renderServicesSub(box,v);
   else if(curVehSub==='costs') renderCostsSub(box,v);
+  else if(curVehSub==='economics') renderEconomicsSub(box,v);
 }
 
 function renderVehicleDash(box,v){
@@ -2042,6 +2247,21 @@ function renderVehicleDash(box,v){
     h+=`</div>`;
   }
   // Vehicle info footer
+  // Vehicle life indicator
+  const lifeKm=+(v.expectedLifeKm||0);
+  if(lifeKm&&stats.currentOdo){
+    const lifePct=Math.min(100,Math.round(stats.currentOdo/lifeKm*100));
+    const lifeColor=lifePct<50?'var(--green)':lifePct<75?'var(--orange)':'var(--red)';
+    h+=`<div style="margin-top:8px;font-size:11px">
+      <div style="display:flex;justify-content:space-between;color:var(--t3);margin-bottom:3px">
+        <span>Vehicle life: ${lifePct}%</span>
+        <span>${stats.currentOdo.toLocaleString()} / ${lifeKm.toLocaleString()} km</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${lifePct}%;background:${lifeColor};border-radius:3px"></div>
+      </div>
+    </div>`;
+  }
   h+=`<div style="margin-top:8px;font-size:11px;color:var(--t3);display:flex;gap:12px;flex-wrap:wrap">
     ${v.engine?`<span>🔧 ${esc(v.engine)}</span>`:''}
     ${v.regNumber?`<span>🏷 ${esc(v.regNumber)}</span>`:''}
@@ -2105,7 +2325,7 @@ function renderFuelSub(box,v){
 function renderServicesSub(box,v){
   const reminders=checkServiceReminders(curVeh);
   const services=getVehicleServices(curVeh);
-  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title">Log service</div>
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log service <button class="btn btn-sm" onclick="importServicesCSV()" title="Import from Fuelly services CSV">📥 Import CSV</button></div>
     <div class="row" style="margin-bottom:6px">
       <input id="sl-date" type="date" value="${TODAY}" style="width:130px">
       <input id="sl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
@@ -2183,24 +2403,31 @@ function renderServicesSub(box,v){
 
 function renderCostsSub(box,v){
   const stats=calcVehicleStats(curVeh);
-  const fuel=getVehicleFuel(curVeh);
-  const services=getVehicleServices(curVeh);
+  const fuel=getVehicleFuel(curVeh);const services=getVehicleServices(curVeh);const expenses=getVehicleExpenses(curVeh);
+  // Header stats
   let h=`<div class="row" style="margin-bottom:10px">
-    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--red)">${formatR(stats.totalCost)}</div><div class="veh-stat-lbl">Total spend</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--red)">${formatR(stats.totalCost)}</div><div class="veh-stat-lbl">Total TCO</div></div>
     <div class="veh-stat"><div class="veh-stat-val" style="color:var(--orange)">${stats.costPerKm>0?'R'+stats.costPerKm.toFixed(2):'-'}</div><div class="veh-stat-lbl">Cost/km</div></div>
-    <div class="veh-stat"><div class="veh-stat-val">${stats.totalKm>0?stats.totalKm.toLocaleString():'-'}</div><div class="veh-stat-lbl">Total km</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--blue)">${stats.annualCost>0?formatR(stats.annualCost)+'/yr':'-'}</div><div class="veh-stat-lbl">Annual avg</div></div>
+    <div class="veh-stat"><div class="veh-stat-val" style="color:var(--gold)">${stats.monthlyAvgCost>0?formatR(stats.monthlyAvgCost)+'/mo':'-'}</div><div class="veh-stat-lbl">Monthly avg</div></div>
   </div>`;
-  // Cost breakdown
+  // Cost breakdown — all categories
   const items=[
     {label:'Purchase',amount:stats.purchasePrice,color:'var(--t3)'},
     {label:'Fuel',amount:stats.totalFuelCost,color:'var(--blue)'},
     {label:'Maintenance',amount:stats.totalServiceCost,color:'var(--green)'},
+    {label:'🛡 Insurance',amount:stats.insuranceCost,color:'var(--purple)'},
+    {label:'📋 Licence',amount:stats.licenceCost,color:'var(--teal)'},
+    {label:'📍 Tracker',amount:stats.trackerCost,color:'var(--orange)'},
+    {label:'🛞 Tyres',amount:stats.tyreCost,color:'#b8860b'},
+    {label:'💳 Co-payment',amount:stats.coPaymentCost,color:'var(--red)'},
+    {label:'📦 Other',amount:stats.otherExpCost,color:'var(--t2)'},
   ].filter(i=>i.amount>0);
   const maxAmt=Math.max(...items.map(i=>i.amount),1);
   if(items.length){
     h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Cost breakdown</div>`;
     items.forEach(i=>{
-      const pct=Math.round(i.amount/stats.totalCost*100);
+      const pct=stats.totalCost>0?Math.round(i.amount/stats.totalCost*100):0;
       h+=`<div style="margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
           <span style="color:var(--t2)">${i.label}</span>
@@ -2213,8 +2440,46 @@ function renderCostsSub(box,v){
     });
     h+=`</div>`;
   }
-  // Monthly cost trend
-  const allCosts=[...fuel.map(f=>({date:f.date,amount:+f.totalCost||0})),...services.map(s=>({date:s.date,amount:+s.totalCost||0}))];
+  // Add expense form
+  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Add expense</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ex-date" type="date" value="${TODAY}" style="width:130px">
+      <select id="ex-cat" style="width:130px">
+        ${Object.entries(EXP_CATS).map(([k,v2])=>`<option value="${k}">${v2.emoji} ${v2.label}</option>`).join('')}
+      </select>
+      <select id="ex-freq" style="width:100px">
+        <option value="once">Once-off</option><option value="annual">Annual</option><option value="monthly">Monthly</option>
+      </select>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ex-desc" placeholder="Description" style="flex:1">
+      <input id="ex-amount" type="number" step="0.01" placeholder="Amount (R)" style="width:120px">
+    </div>
+    <div class="row">
+      <input id="ex-supplier" placeholder="Supplier / provider" style="flex:1">
+      <input id="ex-notes" placeholder="Notes" style="flex:1">
+      <button class="btn btn-primary" onclick="addExpense()">+ Add</button>
+    </div>
+  </div>`;
+  // Expense history
+  if(expenses.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Expenses (${expenses.length})</div>`;
+    expenses.slice(0,50).forEach(e=>{
+      const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category,color:'var(--t2)'};
+      h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${e.date||''}</span>
+        <span style="font-size:11px;padding:1px 6px;border-radius:3px;background:${cat.color}22;color:${cat.color}">${cat.emoji} ${cat.label}</span>
+        <span style="color:var(--t2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.description||'')}${e.frequency&&e.frequency!=='once'?' <span style="color:var(--t3);font-size:10px">('+e.frequency+')</span>':''}</span>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(e.amount)}</span>
+          <button class="btn-icon" onclick="delExpense('${e.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  // Monthly cost trend — including expenses
+  const allCosts=[...fuel.map(f=>({date:f.date,amount:+f.totalCost||0})),...services.map(s=>({date:s.date,amount:+s.totalCost||0})),...expenses.map(e=>({date:e.date,amount:+e.amount||0}))];
   const months={};allCosts.forEach(c=>{const m=(c.date||'').slice(0,7);if(m){months[m]=(months[m]||0)+c.amount;}});
   const sorted=Object.entries(months).sort((a,b)=>a[0].localeCompare(b[0])).slice(-12);
   if(sorted.length>=2){
@@ -2233,6 +2498,152 @@ function renderCostsSub(box,v){
     </div>`;
   }
   box.innerHTML=h;
+}
+
+// --- Economics Sub-tab ---
+function renderEconomicsSub(box,v){
+  const stats=calcVehicleStats(curVeh);
+  const comparisons=getVehicleComparisons(curVeh);
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title">Current vehicle — ${esc(v.name)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;font-size:12px">
+      <div><span style="color:var(--t3)">Annual km:</span> <b>${Math.round(stats.annualKm).toLocaleString()} km</b></div>
+      <div><span style="color:var(--t3)">Avg km/L:</span> <b>${stats.avgKmL.toFixed(1)}</b></div>
+      <div><span style="color:var(--t3)">Annual fuel:</span> <b>${formatR(stats.annualCost>0?stats.totalFuelCost/(stats.yearsOwned||1):0)}</b></div>
+      <div><span style="color:var(--t3)">Annual maint:</span> <b>${formatR(stats.yearsOwned>0?stats.totalServiceCost/stats.yearsOwned:0)}</b></div>
+      <div><span style="color:var(--t3)">Annual insurance:</span> <b>${formatR(stats.yearsOwned>0?stats.insuranceCost/stats.yearsOwned:0)}</b></div>
+      <div><span style="color:var(--t3)">Cost/km:</span> <b>R${stats.costPerKm.toFixed(2)}</b></div>
+      <div><span style="color:var(--t3)">Total TCO:</span> <b>${formatR(stats.totalCost)}</b></div>
+      <div><span style="color:var(--t3)">Years owned:</span> <b>${stats.yearsOwned.toFixed(1)}</b></div>
+    </div>
+  </div>`;
+  // Add comparison form
+  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Add comparison vehicle</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ec-name" placeholder="Vehicle name (e.g. Toyota Hilux 2.4 GD-6)" style="flex:2;min-width:180px">
+      <input id="ec-price" type="number" placeholder="Purchase price (R)" style="width:150px">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ec-rate" type="number" step="0.01" placeholder="Finance rate % (11.75)" style="width:130px" value="11.75">
+      <input id="ec-term" type="number" placeholder="Finance months (0=cash)" style="width:150px" value="0">
+      <input id="ec-kml" type="number" step="0.1" placeholder="Expected km/L" style="width:110px" value="8">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ec-maint" type="number" step="0.1" placeholder="Maint R/km" style="width:110px" value="1.5">
+      <input id="ec-ins" type="number" placeholder="Insurance R/yr" style="width:120px" value="5000">
+      <input id="ec-lic" type="number" placeholder="Licence R/yr" style="width:120px" value="2000">
+      <input id="ec-km" type="number" placeholder="Annual km (auto)" style="width:130px" value="${Math.round(stats.annualKm)||''}">
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" onclick="addComparison()">+ Add Comparison</button>
+    </div>
+  </div>`;
+  // Existing comparisons
+  if(comparisons.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Comparisons</div>`;
+    comparisons.forEach(c=>{
+      const hasResults=c.results&&c.results!=='';
+      h+=`<div class="log-row" style="grid-template-columns:1fr auto">
+        <div>
+          <span style="font-weight:500">${esc(c.comparisonName||c.targetVehicle)}</span>
+          <span style="font-size:11px;color:var(--t3);margin-left:8px">${formatR(c.purchasePrice)}${+c.financeTerm?' · '+c.financeTerm+'mo finance':' · Cash'}</span>
+          ${hasResults?`<span style="font-size:10px;color:var(--green);margin-left:6px">✅ Analysed ${c.lastRunDate||''}</span>`:''}
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn-icon" onclick="delComparison('${c.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    h+=`<div style="margin-top:8px"><button class="btn btn-ai" onclick="runReplacementAnalysis('${curVeh}')">🤖 Run 10-Year Analysis</button></div>`;
+    h+=`</div>`;
+  }
+  // Show results if available
+  const latestComp=comparisons.find(c=>c.results&&c.results!=='');
+  if(latestComp){
+    try{
+      const res=JSON.parse(latestComp.results);
+      h+=renderEconomicsReport(res,v.name,stats);
+    }catch(e){console.error('Failed to parse economics results:',e);}
+  }
+  box.innerHTML=h;
+}
+
+function renderEconomicsReport(res,keepName,stats){
+  let h='';
+  // AI Recommendation
+  if(res.recommendation){
+    h+=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--gold)">
+      <div class="card-title">🤖 Recommendation</div>
+      <div style="font-size:13px;line-height:1.5;color:var(--t)">${esc(res.recommendation)}</div>
+    </div>`;
+  }
+  // Crossover info
+  if(res.crossoverYear){
+    h+=`<div style="text-align:center;font-size:12px;color:var(--orange);margin-bottom:8px">⚠️ Crossover at year ${res.crossoverYear} — replacing becomes cheaper after this point</div>`;
+  }
+  // SVG chart — cumulative cost lines
+  const keepYrs=res.keepScenario?.years||[];
+  const altYrs=res.alternatives?.[0]?.years||[];
+  if(keepYrs.length&&altYrs.length){
+    const allVals=[...keepYrs.map(y=>y.cumulative),...altYrs.map(y=>y.cumulative)];
+    const maxVal=Math.max(...allVals,1);
+    const W=600,H=200,P=40;
+    const xStep=(W-P*2)/(keepYrs.length-1||1);
+    const yScale=(H-P*2)/maxVal;
+    const kPts=keepYrs.map((y,i)=>`${P+i*xStep},${H-P-y.cumulative*yScale}`).join(' ');
+    const aPts=altYrs.map((y,i)=>`${P+i*xStep},${H-P-y.cumulative*yScale}`).join(' ');
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">10-Year cumulative cost</div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:220px">
+        <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--b)" stroke-width="1"/>
+        <line x1="${P}" y1="${P}" x2="${P}" y2="${H-P}" stroke="var(--b)" stroke-width="1"/>
+        <polyline points="${kPts}" fill="none" stroke="var(--blue)" stroke-width="2"/>
+        <polyline points="${aPts}" fill="none" stroke="var(--red)" stroke-width="2"/>
+        ${keepYrs.map((y,i)=>`<circle cx="${P+i*xStep}" cy="${H-P-y.cumulative*yScale}" r="3" fill="var(--blue)"/>`).join('')}
+        ${altYrs.map((y,i)=>`<circle cx="${P+i*xStep}" cy="${H-P-y.cumulative*yScale}" r="3" fill="var(--red)"/>`).join('')}
+        ${keepYrs.map((y,i)=>`<text x="${P+i*xStep}" y="${H-P+14}" text-anchor="middle" fill="var(--t3)" font-size="9">Yr${y.year}</text>`).join('')}
+        <text x="${W-P+5}" y="${H-P-keepYrs[keepYrs.length-1].cumulative*yScale+4}" fill="var(--blue)" font-size="9">Keep</text>
+        <text x="${W-P+5}" y="${H-P-altYrs[altYrs.length-1].cumulative*yScale+4}" fill="var(--red)" font-size="9">${res.alternatives?.[0]?.name||'Alt'}</text>
+      </svg>
+    </div>`;
+  }
+  // Year-by-year table
+  if(keepYrs.length){
+    const altName=res.alternatives?.[0]?.name||'Alternative';
+    h+=`<div class="card"><div class="card-title">Year-by-year comparison</div>
+      <div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse;font-family:'DM Mono',monospace">
+        <tr style="color:var(--t3);border-bottom:1px solid var(--b)">
+          <th style="text-align:left;padding:4px">Year</th>
+          <th style="text-align:right;padding:4px">Keep (cum.)</th>
+          <th style="text-align:right;padding:4px">${esc(altName)} (cum.)</th>
+          <th style="text-align:right;padding:4px">Difference</th>
+          <th style="text-align:center;padding:4px">Winner</th>
+        </tr>`;
+    keepYrs.forEach((ky,i)=>{
+      const ay=altYrs[i]||{cumulative:0};
+      const diff=ky.cumulative-ay.cumulative;
+      const winner=diff<0?'Keep':'Replace';
+      const winColor=diff<0?'var(--green)':'var(--red)';
+      h+=`<tr style="border-bottom:1px solid var(--bg3)">
+        <td style="padding:4px">${ky.year}</td>
+        <td style="text-align:right;padding:4px;color:var(--blue)">${formatR(ky.cumulative)}</td>
+        <td style="text-align:right;padding:4px;color:var(--red)">${formatR(ay.cumulative)}</td>
+        <td style="text-align:right;padding:4px;color:${winColor}">${diff>0?'+':''}${formatR(Math.abs(diff))}</td>
+        <td style="text-align:center;padding:4px;color:${winColor}">${winner}</td>
+      </tr>`;
+    });
+    // Net position
+    const keepNet=res.keepScenario?.netCost10Year||keepYrs[keepYrs.length-1]?.cumulative||0;
+    const altNet=res.alternatives?.[0]?.netCost10Year||altYrs[altYrs.length-1]?.cumulative||0;
+    const netDiff=keepNet-altNet;
+    h+=`<tr style="border-top:2px solid var(--b);font-weight:700">
+      <td style="padding:6px">10-Year Net</td>
+      <td style="text-align:right;padding:6px;color:var(--blue)">${formatR(keepNet)}</td>
+      <td style="text-align:right;padding:6px;color:var(--red)">${formatR(altNet)}</td>
+      <td style="text-align:right;padding:6px;color:${netDiff<0?'var(--green)':'var(--red)'}"><b>${netDiff>0?'+':''}${formatR(Math.abs(netDiff))}</b></td>
+      <td style="text-align:center;padding:6px;color:${netDiff<0?'var(--green)':'var(--red)'}"><b>${netDiff<0?'KEEP':'REPLACE'}</b></td>
+    </tr>`;
+    h+=`</table></div></div>`;
+  }
+  return h;
 }
 
 // ═══ INVENTORY ═══
@@ -2491,7 +2902,7 @@ function saveSettings(){
   CFG.theme=themeRadio?themeRadio.value:'auto';
   LS.set('los_cfg',CFG);applyTheme();closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
-function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
+function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders','vehicleexpenses','vehiclecomparisons'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
 
 // ═══ INIT ═══
 async function initApp(){
