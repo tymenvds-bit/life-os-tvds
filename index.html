@@ -608,24 +608,32 @@ let selNote = null, selJournal = null;
 let curVeh = null, curVehSub = 'dashboard', curInv = 'home', journalMood = '3';
 let todayBoard = [];
 
-// ═══ TODAY'S BOARD ═══
+// ═══ TODAY'S BOARD (synced via boardDate field on Todos) ═══
 function loadTodayBoard(){
-  const saved=LS.get('los_today_board',{date:'',ids:[]});
-  if(saved.date===TODAY){todayBoard=saved.ids||[];}
-  else{todayBoard=[];saveTodayBoard();}
+  // Build todayBoard from DB.todos where boardDate === TODAY
+  todayBoard=DB.todos.filter(t=>t.boardDate===TODAY).map(t=>String(t.id));
 }
-function saveTodayBoard(){LS.set('los_today_board',{date:TODAY,ids:todayBoard});}
+function saveTodayBoard(){/* no-op — board state lives on each todo's boardDate field */}
 function commitToday(id){
   const sid=String(id);
   if(todayBoard.includes(sid))return;
   todayBoard.push(sid);
   const t=DB.todos.find(t=>String(t.id)===sid);
-  if(t&&!t.due){t.due=TODAY;apiPost('update','Todos',{id:sid,patch:{due:TODAY}});}
-  saveTodayBoard();renderDashboard();renderTodos();
+  if(t){
+    t.boardDate=TODAY;
+    if(!t.due){t.due=TODAY;}
+    apiPost('update','Todos',{id:sid,patch:{boardDate:TODAY,due:t.due}});
+  }
+  renderDashboard();renderTodos();
 }
 function uncommitToday(id){
   todayBoard=todayBoard.filter(i=>i!==String(id));
-  saveTodayBoard();renderDashboard();renderTodos();
+  const t=DB.todos.find(t=>String(t.id)===String(id));
+  if(t){
+    t.boardDate='';
+    apiPost('update','Todos',{id:String(id),patch:{boardDate:''}});
+  }
+  renderDashboard();renderTodos();
 }
 function isOnBoard(id){return todayBoard.includes(String(id));}
 function boardToggle(id){toggleTodo(id);renderDashboard();}
