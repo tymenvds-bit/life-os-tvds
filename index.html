@@ -2048,6 +2048,27 @@ function calcRecurringCosts(vid){
 // Backward compat wrapper
 function getRecurringAnnualCost(vid){return calcRecurringCosts(vid).annualProjected;}
 
+// Get current active annual rate for a specific expense category
+// Used by economics calculator for future projections (uses current rate, not historic average)
+function getActiveAnnualByCategory(vid,cat){
+  const now=new Date(TODAY);
+  const exps=getVehicleExpenses(vid).filter(e=>e.category===cat&&e.frequency&&e.frequency!=='once');
+  // Find active entries (started and not ended)
+  const active=exps.filter(e=>{
+    const start=new Date(e.date||e.createdAt||TODAY);
+    const end=e.endDate?new Date(e.endDate):null;
+    return start<=now&&(!end||end>=now);
+  });
+  // Sum their annual equivalent
+  return active.reduce((s,e)=>{
+    const amt=+e.amount||0;
+    if(e.frequency==='monthly')return s+amt*12;
+    if(e.frequency==='quarterly')return s+amt*4;
+    if(e.frequency==='annual')return s+amt;
+    return s;
+  },0);
+}
+
 // --- Service CSV Import ---
 async function importServicesCSV(){
   if(!curVeh){toast('Select a vehicle first');return;}
@@ -2148,8 +2169,10 @@ async function runReplacementAnalysis(vehicleId){
     avgKmPerYear:Math.round(stats.annualKm),avgKmL:+stats.avgKmL.toFixed(1),
     totalFuelCost:Math.round(stats.totalFuelCost),totalServiceCost:Math.round(stats.totalServiceCost),
     totalExpenses:Math.round(stats.totalExpenses),
-    insuranceAnnual:Math.round(stats.insuranceCost/(stats.yearsOwned||1)),
-    licenceAnnual:Math.round(stats.licenceCost/(stats.yearsOwned||1)),
+    insuranceAnnualHistoric:Math.round(stats.insuranceCost/(stats.yearsOwned||1)),
+    licenceAnnualHistoric:Math.round(stats.licenceCost/(stats.yearsOwned||1)),
+    insuranceAnnualCurrent:Math.round(getActiveAnnualByCategory(vehicleId,'insurance')),
+    licenceAnnualCurrent:Math.round(getActiveAnnualByCategory(vehicleId,'licence')),
     maintenanceTrend:mTrend.projected,
     yearsOwned:+stats.yearsOwned.toFixed(1),annualCost:Math.round(stats.annualCost),
     resaleEstimate:v.name.toLowerCase().includes('gq')?'R80000-120000 (classic 4x4, appreciating)':'Standard SA depreciation'
@@ -2169,7 +2192,13 @@ ${JSON.stringify(keepData,null,2)}
 ALTERNATIVE VEHICLE(S):
 ${JSON.stringify(alternatives,null,2)}
 
-SA ASSUMPTIONS: Prime rate 11.75%, fuel inflation 5% p.a., general CPI 5.5%, current Unleaded 95 price ~R21/L.
+IMPORTANT DATA NOTES:
+- insuranceAnnualCurrent = the CURRENT active insurance premium rate (use this for Year 1 projection, then inflate by CPI each year)
+- insuranceAnnualHistoric = the average over the ownership period (for reference only)
+- licenceAnnualCurrent = current licence cost (use for Year 1, inflate by CPI)
+- totalExpenses = actual total insurance + licence + other expenses spent to date (already correctly calculated from recurring entries)
+
+SA ASSUMPTIONS: Prime rate 11.75%, fuel inflation 5% p.a., insurance/licence inflation (general CPI) 5.5%, current Unleaded 95 price ~R21/L.
 New vehicle depreciation: 20% year 1, 12% per year thereafter. Used vehicle: 10% per year.
 Opportunity cost of capital: 8% (SA money market).
 Maintenance during warranty (3-5 years): R1000-2000/year. After warranty: escalating from R5000/year.
