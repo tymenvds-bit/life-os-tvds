@@ -2663,19 +2663,42 @@ function renderCostsSub(box,v){
     <div class="veh-stat"><div class="veh-stat-val" style="color:var(--blue)">${stats.annualCost>0?formatR(stats.annualCost)+'/yr':'-'}</div><div class="veh-stat-lbl">Annual avg</div></div>
     <div class="veh-stat"><div class="veh-stat-val" style="color:var(--gold)">${stats.monthlyAvgCost>0?formatR(stats.monthlyAvgCost)+'/mo':'-'}</div><div class="veh-stat-lbl">Monthly avg</div></div>
   </div>`;
-  // Recurring costs summary
-  const recurring=expenses.filter(e=>e.frequency&&e.frequency!=='once');
-  if(recurring.length){
-    const monthlyTotal=recurring.reduce((s,e)=>{const a=+e.amount||0;if(e.frequency==='monthly')return s+a;if(e.frequency==='quarterly')return s+a/3;if(e.frequency==='annual')return s+a/12;return s;},0);
+  // Recurring costs summary — only ACTIVE (no endDate, or endDate in future)
+  const allRecurring=expenses.filter(e=>e.frequency&&e.frequency!=='once');
+  const activeRecurring=allRecurring.filter(e=>!e.endDate||e.endDate>=TODAY);
+  const expiredRecurring=allRecurring.filter(e=>e.endDate&&e.endDate<TODAY);
+  if(allRecurring.length){
+    const monthlyTotal=activeRecurring.reduce((s,e)=>{const a=+e.amount||0;if(e.frequency==='monthly')return s+a;if(e.frequency==='quarterly')return s+a/3;if(e.frequency==='annual')return s+a/12;return s;},0);
     h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🔄 Recurring costs <span style="font-size:11px;color:var(--gold);font-weight:500">${formatR(monthlyTotal)}/mo · ${formatR(monthlyTotal*12)}/yr</span></div>`;
-    recurring.forEach(e=>{
+    // Expiring soon alerts (within 30 days)
+    const expiringSoon=activeRecurring.filter(e=>{if(!e.endDate)return false;const d=Math.round((new Date(e.endDate)-new Date(TODAY))/(1000*60*60*24));return d>=0&&d<=30;});
+    expiringSoon.forEach(e=>{
+      const daysLeft=Math.round((new Date(e.endDate)-new Date(TODAY))/(1000*60*60*24));
+      const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category};
+      h+=`<div style="padding:6px 10px;margin-bottom:4px;border-radius:var(--r);background:${daysLeft<=7?'#1a0808':'#1a1500'};border-left:3px solid ${daysLeft<=7?'var(--red)':'var(--orange)'}">
+        <span style="font-size:12px;color:${daysLeft<=7?'var(--red)':'var(--orange)'}">⚠️ ${cat.emoji} ${esc(e.description||cat.label)} expires ${e.endDate} — <b>${daysLeft} days left</b>${e.category==='licence'?' (21-day grace period after expiry before fines)':''}</span>
+      </div>`;
+    });
+    // Active recurring items
+    activeRecurring.forEach(e=>{
       const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category};
       const monthly=e.frequency==='monthly'?+e.amount:e.frequency==='quarterly'?(+e.amount)/3:e.frequency==='annual'?(+e.amount)/12:0;
       h+=`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--bg3)">
-        <span>${cat.emoji} ${esc(e.description||cat.label)}</span>
+        <span>${cat.emoji} ${esc(e.description||cat.label)}${e.endDate?` <span style="color:var(--t3);font-size:10px">→ ${e.endDate}</span>`:' <span style="color:var(--green);font-size:10px">ongoing</span>'}</span>
         <span style="font-family:'DM Mono',monospace;color:var(--t2)">${formatR(e.amount)}/${e.frequency==='monthly'?'mo':e.frequency==='quarterly'?'qtr':'yr'} <span style="color:var(--t3)">(${formatR(monthly)}/mo)</span></span>
       </div>`;
     });
+    // Expired recurring (greyed out)
+    if(expiredRecurring.length){
+      h+=`<div style="margin-top:6px;padding-top:4px;border-top:1px dashed var(--bg3)"><span style="font-size:10px;color:var(--t3)">Expired (${expiredRecurring.length})</span></div>`;
+      expiredRecurring.forEach(e=>{
+        const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category};
+        h+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;opacity:0.4">
+          <span>${cat.emoji} ${esc(e.description||cat.label)} <span style="font-size:10px">ended ${e.endDate}</span></span>
+          <span style="font-family:'DM Mono',monospace">${formatR(e.amount)}/${e.frequency==='monthly'?'mo':e.frequency==='quarterly'?'qtr':'yr'}</span>
+        </div>`;
+      });
+    }
     h+=`</div>`;
   }
   // Cost breakdown — all categories
