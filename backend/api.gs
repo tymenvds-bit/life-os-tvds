@@ -76,10 +76,22 @@ function getOrCreateSheet(name) {
   if (!sheet) {
     const allSheets = ss.getSheets();
     const match = allSheets.find(s => s.getName().toLowerCase() === name.toLowerCase());
-    if (match) return match;
-    sheet = ss.insertSheet(name);
-    const schema = SCHEMAS[name];
-    if (schema) sheet.getRange(1, 1, 1, schema.length).setValues([schema]);
+    if (match) sheet = match;
+    else {
+      sheet = ss.insertSheet(name);
+      const schema = SCHEMAS[name];
+      if (schema) sheet.getRange(1, 1, 1, schema.length).setValues([schema]);
+      return sheet;
+    }
+  }
+  // Validate and repair headers if schema exists
+  const schema = SCHEMAS[name];
+  if (schema) {
+    const existingHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].filter(h => h !== '');
+    if (!existingHeaders.length || existingHeaders[0] === '' || existingHeaders.length < schema.length) {
+      // Headers are missing or incomplete — write correct headers
+      sheet.getRange(1, 1, 1, schema.length).setValues([schema]);
+    }
   }
   return sheet;
 }
