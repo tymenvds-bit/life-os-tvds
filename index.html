@@ -2517,53 +2517,64 @@ function openServiceDay(vid){
   const checklist=getVehicleChecklist(vid);
   const openTodos=getVehicleTodos(vid).filter(t=>t.isDone!=='1'&&t.category==='maintenance');
   const modal=document.getElementById('veh-modal');const body=document.getElementById('veh-modal-body');
-  let h=`<div style="max-height:80vh;overflow-y:auto;padding:12px">
-    <h3 style="margin:0 0 8px">🔧 Service Day — ${esc(v.name)}</h3>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <div><label style="font-size:10px;color:var(--t3)">Date</label><br><input id="sd-date" type="date" value="${TODAY}" style="width:130px"></div>
-      <div><label style="font-size:10px;color:var(--t3)">Odometer</label><br><input id="sd-odo" type="number" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:120px"></div>
-      <div><label style="font-size:10px;color:var(--t3)">Total Cost (R)</label><br><input id="sd-cost" type="number" placeholder="0" style="width:110px"></div>
-      <div><label style="font-size:10px;color:var(--t3)">Provider</label><br><input id="sd-provider" placeholder="Workshop" style="width:150px"></div>
+  // Full-screen mobile-first layout
+  body.style.cssText='width:100%;max-width:560px;max-height:95vh;margin:auto;border-radius:12px;overflow:hidden;display:flex;flex-direction:column';
+  // Header (sticky)
+  let h=`<div style="padding:14px 16px;border-bottom:1px solid var(--bg3);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg)">
+    <div><div style="font-size:16px;font-weight:700">🔧 Service Day</div><div style="font-size:12px;color:var(--t3)">${esc(v.name)}</div></div>
+    <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3);padding:4px">✕</button>
+  </div>
+  <div style="overflow-y:auto;flex:1;padding:16px;-webkit-overflow-scrolling:touch">
+    <!-- Service info -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Date</div><input id="sd-date" type="date" value="${TODAY}" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)"></div>
+      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Odometer</div><input id="sd-odo" type="number" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" inputmode="numeric"></div>
+      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Total Cost (R)</div><input id="sd-cost" type="number" placeholder="0" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" inputmode="decimal"></div>
+      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Provider</div><input id="sd-provider" placeholder="Workshop" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)"></div>
     </div>`;
-  // Show open maintenance todos from previous services
+  // Previous service todos
   if(openTodos.length){
-    h+=`<div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:6px;border-left:3px solid var(--orange)">
-      <div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:4px">🔔 From previous services (${openTodos.length})</div>
-      <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Tick items you're addressing today — they'll be marked done</div>`;
+    h+=`<div style="margin-bottom:16px;padding:12px;background:var(--bg3);border-radius:10px;border-left:4px solid var(--orange)">
+      <div style="font-size:13px;font-weight:700;color:var(--orange);margin-bottom:8px">🔔 From previous services</div>`;
     openTodos.forEach(t=>{
-      h+=`<div style="display:flex;gap:6px;align-items:center;padding:2px 0">
-        <input type="checkbox" id="sd-todo-${t.id}" style="cursor:pointer">
-        <label for="sd-todo-${t.id}" style="font-size:12px;cursor:pointer">${esc(t.description)}${t.partNumber?` <span style="color:var(--blue);font-size:10px">🔩 ${esc(t.partNumber)}</span>`:''}</label>
-        ${t.notes?`<span style="font-size:10px;color:var(--t3)">(${esc(t.notes)})</span>`:''}
-      </div>`;
+      h+=`<label style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <input type="checkbox" id="sd-todo-${t.id}" style="width:20px;height:20px;flex-shrink:0;margin-top:1px">
+        <div><div style="font-size:14px">${esc(t.description)}</div>${t.partNumber?`<div style="font-size:11px;color:var(--blue)">🔩 ${esc(t.partNumber)}</div>`:''}${t.notes?`<div style="font-size:11px;color:var(--t3)">${esc(t.notes)}</div>`:''}</div>
+      </label>`;
     });
     h+=`</div>`;
   }
+  // Checklist sections
   checklist.forEach((sec,si)=>{
-    h+=`<div style="margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--gold);margin-bottom:4px;border-bottom:1px solid var(--bg3);padding-bottom:2px">${esc(sec.section)}</div>`;
+    h+=`<div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--gold)">${esc(sec.section)}</div>`;
     sec.items.forEach((item,ii)=>{
-      h+=`<div style="display:flex;gap:6px;align-items:flex-start;padding:3px 0">
-        <input type="checkbox" id="sd-${si}-${ii}" ${item.default?'checked':''} style="margin-top:3px;cursor:pointer">
-        <div style="flex:1;min-width:0">
-          <label for="sd-${si}-${ii}" style="font-size:12px;cursor:pointer"><b>${esc(item.name)}</b> <span style="color:var(--t3);font-size:11px">— ${esc(item.desc)}</span></label>
-          <div style="display:flex;gap:4px;margin-top:2px;align-items:center">
-            <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="font-size:10px;flex:1;padding:2px 6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:3px">
-            <label style="font-size:9px;color:var(--t3);white-space:nowrap;cursor:pointer"><input type="checkbox" id="sd-followup-${si}-${ii}" style="margin-right:2px">→ Todo</label>
-          </div>
+      h+=`<div style="padding:10px 0;border-bottom:1px solid var(--bg3)">
+        <label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer">
+          <input type="checkbox" id="sd-${si}-${ii}" ${item.default?'checked':''} style="width:20px;height:20px;flex-shrink:0;margin-top:2px">
+          <div style="flex:1"><div style="font-size:15px;font-weight:500">${esc(item.name)}</div><div style="font-size:12px;color:var(--t3);margin-top:2px">${esc(item.desc)}</div></div>
+        </label>
+        <div style="display:flex;gap:6px;margin-top:6px;margin-left:32px;align-items:center">
+          <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:8px">
+          <label style="font-size:11px;color:var(--t3);white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid var(--bg3);border-radius:6px;background:var(--bg2)">
+            <input type="checkbox" id="sd-followup-${si}-${ii}" style="width:14px;height:14px">→ Todo
+          </label>
         </div>
       </div>`;
     });
     h+=`</div>`;
   });
-  h+=`<div style="margin-top:6px"><label style="font-size:10px;color:var(--t3)">Additional notes</label>
-    <textarea id="sd-notes" rows="2" style="width:100%" placeholder="General service notes..."></textarea></div>
-  <div style="display:flex;gap:8px;margin-top:10px;justify-content:space-between;flex-wrap:wrap">
-    <button class="btn btn-sm" onclick="editServiceChecklist('${vid}')">✏️ Edit template</button>
+  h+=`<div style="margin-bottom:12px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Additional notes</div>
+    <textarea id="sd-notes" rows="2" style="width:100%;padding:10px;font-size:13px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" placeholder="General service notes..."></textarea></div>
+  </div>
+  <!-- Footer (sticky) -->
+  <div style="padding:12px 16px;border-top:1px solid var(--bg3);display:flex;gap:8px;justify-content:space-between;flex-shrink:0;background:var(--bg);flex-wrap:wrap">
+    <button class="btn btn-sm" onclick="editServiceChecklist('${vid}')" style="padding:8px 12px">✏️ Edit template</button>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveServiceDay('${vid}')">✅ Complete Service</button>
+      <button class="btn btn-sm" onclick="closeModal()" style="padding:8px 16px">Cancel</button>
+      <button class="btn btn-primary" onclick="saveServiceDay('${vid}')" style="padding:10px 20px;font-size:15px">✅ Complete</button>
     </div>
-  </div></div>`;
+  </div>`;
   body.innerHTML=h;modal.style.display='flex';
 }
 
