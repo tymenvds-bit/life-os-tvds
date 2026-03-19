@@ -2389,6 +2389,66 @@ function completeReminder(remId){
   renderVehicles();toast('Reminder advanced — next due: '+(r.nextDueOdo?Number(r.nextDueOdo).toLocaleString()+'km':'')+(r.nextDueDate?' / '+r.nextDueDate:''));
 }
 
+// --- Reset Reminder Now (ad-hoc, outside of scheduled service) ---
+function resetReminderNow(remId){
+  const r=DB.service_reminders.find(r=>String(r.id)===String(remId));if(!r)return;
+  if(!confirm(`Reset "${r.name}" as done TODAY? This advances the next due date/km from now.`))return;
+  completeReminder(remId);
+  toast(`🔄 ${r.name} reset — next due recalculated from today`);
+}
+
+// --- Edit Reminder ---
+function editReminder(remId){
+  const r=DB.service_reminders.find(r=>String(r.id)===String(remId));if(!r)return;
+  const v=getVehicle(r.vehicleId);
+  const modal=document.getElementById('veh-modal');const body=document.getElementById('veh-modal-body');
+  body.innerHTML=`<div style="padding:16px">
+    <h3 style="margin:0 0 12px">✏️ Edit Reminder</h3>
+    <div style="display:grid;gap:8px">
+      <div><label style="font-size:10px;color:var(--t3)">Name</label><input id="er-name" value="${esc(r.name)}" style="width:100%"></div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Interval (km)</label><input id="er-km" type="number" value="${r.intervalKm||''}" placeholder="0 = date only"></div>
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Interval (months)</label><input id="er-months" type="number" value="${r.intervalMonths||''}" placeholder="0 = km only"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Last service ODO</label><input id="er-lastodo" type="number" value="${r.lastServiceOdo||''}"></div>
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Last service date</label><input id="er-lastdate" type="date" value="${r.lastServiceDate||''}"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Next due ODO</label><input id="er-nextodo" type="number" value="${r.nextDueOdo||''}" placeholder="Auto-calculated"></div>
+        <div style="flex:1"><label style="font-size:10px;color:var(--t3)">Next due date</label><input id="er-nextdate" type="date" value="${r.nextDueDate||''}" placeholder="Auto-calculated"></div>
+      </div>
+      <div style="font-size:10px;color:var(--t3);padding:4px 0">Current ODO: ${v?.currentOdo?Number(v.currentOdo).toLocaleString():' ?'} km</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditedReminder('${remId}')">💾 Save</button>
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
+
+function saveEditedReminder(remId){
+  const r=DB.service_reminders.find(r=>String(r.id)===String(remId));if(!r)return;
+  const g=id=>document.getElementById(id)?.value||'';
+  const name=g('er-name').trim();if(!name){toast('Enter a name');return;}
+  const intervalKm=g('er-km')||'0';
+  const intervalMonths=g('er-months')||'0';
+  const lastOdo=g('er-lastodo')||'';
+  const lastDate=g('er-lastdate')||'';
+  let nextOdo=g('er-nextodo');
+  let nextDate=g('er-nextdate');
+  // Auto-calc if user cleared next fields
+  if(!nextOdo&&+intervalKm&&+lastOdo) nextOdo=String(+lastOdo+(+intervalKm));
+  if(!nextDate&&+intervalMonths&&lastDate){
+    const d=new Date(lastDate);d.setMonth(d.getMonth()+(+intervalMonths));nextDate=d.toISOString().split('T')[0];
+  }
+  // Update in memory + Sheets
+  Object.assign(r,{name,intervalKm,intervalMonths,lastServiceDate:lastDate,lastServiceOdo:lastOdo,nextDueOdo:nextOdo||'',nextDueDate:nextDate||''});
+  apiPost('update','ServiceReminders',{id:String(remId),patch:{name,intervalKm,intervalMonths,lastServiceDate:lastDate,lastServiceOdo:lastOdo,nextDueOdo:nextOdo||'',nextDueDate:nextDate||''}});
+  closeModal();renderVehicles();toast('✅ Reminder updated');
+}
+
 // --- Calendar Sync for Reminders ---
 async function syncReminderToCalendar(remId){
   const r=DB.service_reminders.find(r=>String(r.id)===String(remId));if(!r)return;
@@ -2951,7 +3011,9 @@ function renderServicesSub(box,v){
         <span style="font-size:10px;color:var(--t3);margin-left:8px">${r.intervalKm?'every '+Number(r.intervalKm).toLocaleString()+'km':''}${r.intervalKm&&r.intervalMonths?' / ':''}${r.intervalMonths?'every '+r.intervalMonths+'mo':''}</span></div>
         <div style="display:flex;align-items:center;gap:6px">
           <span style="color:${txt};font-size:12px;font-weight:600;font-family:'DM Mono',monospace">${kmLabel||dateLabel||'—'}</span>
-          <button class="btn-icon" onclick="completeReminder('${r.id}')" title="Complete & advance" style="font-size:11px">✅</button>
+          <button class="btn-icon" onclick="completeReminder('${r.id}')" title="Complete & advance to next interval" style="font-size:11px">✅</button>
+          <button class="btn-icon" onclick="resetReminderNow('${r.id}')" title="Reset now (done outside of service)" style="font-size:11px">🔄</button>
+          <button class="btn-icon" onclick="editReminder('${r.id}')" title="Edit reminder" style="font-size:11px">✏️</button>
           <button class="btn-icon" onclick="syncReminderToCalendar('${r.id}')" title="Add to calendar" style="font-size:11px">📅</button>
           <button class="btn-icon" onclick="delReminder('${r.id}')" style="font-size:11px">🗑</button>
         </div>
