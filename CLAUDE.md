@@ -47,7 +47,10 @@ Personal life operating system for Tijmen van der Schyff.
 - All data persists to localStorage first, then syncs to Google Sheets.
 - Escape all user input with `esc()` before rendering as HTML.
 - Test changes by opening `index.html` directly in a browser or via GitHub Pages.
-- **After every significant change:** update this file (CLAUDE.md) to reflect new modules, functions, API actions, or architecture changes. This file must always match the current state of the codebase.
+- **After every significant change:** update this file (CLAUDE.md) AND `DEVLOG.md` to reflect new modules, functions, API actions, or architecture changes. CLAUDE.md must always match the current state of the codebase. DEVLOG.md must capture the WHY — decisions made, bugs found, lessons learned.
+- **After every session:** append a session summary to `DEVLOG.md` with: what was built, key decisions, bugs hit, lessons learned.
+- **Keep the in-app HELP object** (in index.html) in sync with CLAUDE.md. When features change, update help text.
+- **Deploy backend automatically:** run `clasp push && clasp deploy -i "AKfycbx17_C_TeXc5uww26GivAnJffT6GPWzqjInJ_BWn0D5qZV0NlOkIxFn2yT_eO73v1HdAw" -d "description"` after any api.gs change. Requires `export PATH="/c/Program Files/nodejs:/c/Users/tymen/AppData/Roaming/npm:$PATH"` in terminal.
 
 ## Deployment & Persistence Checklist
 
@@ -75,7 +78,21 @@ Personal life operating system for Tijmen van der Schyff.
 
 - **Workflow optimisation**: Continuously evaluate if development, deployment, and data workflows can be improved. If a manual step is repeated more than twice, automate it.
 - **App workflow optimisation**: Continuously evaluate if the user's daily workflow in the app can be streamlined. Reduce clicks, surface important data proactively, eliminate friction.
-- **After every session**: Review what went well, what caused friction, and whether CLAUDE.md needs updating.
+- **After every session**: Review what went well, what caused friction, and whether CLAUDE.md and DEVLOG.md need updating.
+- **Documentation audit**: On every feature change, verify: (1) CLAUDE.md reflects the current state, (2) DEVLOG.md captures the decision/lesson, (3) In-app HELP object is accurate, (4) No redundant/dead features remain.
+- **Help system**: In-app `?` button shows context-sensitive help per tab. Content defined in the `HELP` object in index.html. Must stay in sync with CLAUDE.md.
+
+## Project Files
+
+| File | Purpose | Update frequency |
+|------|---------|-----------------|
+| `CLAUDE.md` | Source of truth for current app state, architecture, functions, schemas | Every feature change |
+| `DEVLOG.md` | Development journal — decisions, bugs, lessons, session summaries | Every session |
+| `index.html` | All frontend code (single-file PWA) | Every code change |
+| `backend/api.gs` | Google Apps Script backend — API actions, schemas | When schemas/API change |
+| `sw.js` | Service worker — auto-versioned by GitHub Actions | Auto (no manual edits) |
+| `.github/workflows/deploy.yml` | CI/CD — deploys to GitHub Pages, bumps SW version, warns on api.gs changes | Rarely |
+| `backend/.clasp.json` | clasp config linking to Apps Script project | Never (set once) |
 
 ## Key Functions
 
