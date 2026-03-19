@@ -2174,14 +2174,19 @@ async function runReplacementAnalysis(vehicleId){
   const maintPerKm=stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3;
 
   // Keep scenario — calculated in code
+  // Catastrophic repair contingency: R50k engine/gearbox rebuild at Year 5 for older vehicles (>15 years)
+  const vehicleAge=new Date().getFullYear()-(+v.year||2000);
+  const CATASTROPHIC_REPAIR=vehicleAge>15?50000:vehicleAge>10?30000:0;
+  const CATASTROPHIC_YEAR=5;
   const keepYears=[];let keepCum=0;
   for(let yr=1;yr<=10;yr++){
     const fuel=Math.round(annualKm/avgKmL*FUEL_PRICE*Math.pow(1+FUEL_INFL,yr-1));
     const maint=Math.round(annualKm*maintPerKm*Math.pow(1+MAINT_INFL,yr-1));
     const ins=Math.round(insAnnual*Math.pow(1+CPI,yr-1));
     const lic=Math.round(licAnnual*Math.pow(1+CPI,yr-1));
-    keepCum+=fuel+maint+ins+lic;
-    keepYears.push({year:yr,fuel,maintenance:maint,insurance:ins,licence:lic,other:0,cumulative:keepCum});
+    const contingency=yr===CATASTROPHIC_YEAR?CATASTROPHIC_REPAIR:0;
+    keepCum+=fuel+maint+ins+lic+contingency;
+    keepYears.push({year:yr,fuel,maintenance:maint,insurance:ins,licence:lic,other:contingency,cumulative:keepCum});
   }
   const keepResale=v.name.toLowerCase().includes('gq')?100000:Math.round(stats.purchasePrice*0.15);
 
@@ -2198,11 +2203,13 @@ async function runReplacementAnalysis(vehicleId){
     // Finance: PMT formula (0 if cash/no term)
     const monthlyPmt=term>0?Math.round(price*rate*Math.pow(1+rate,term)/(Math.pow(1+rate,term)-1)):0;
     const annualFinance=monthlyPmt*12;
-    // Depreciation: 20% yr1, 12% thereafter
+    // Depreciation: standard 20%/12%, but value-retaining vehicles (LC70, Hilux, Defender, Jimny) use 10%/7%
+    const nameLC=(c.comparisonName||'').toLowerCase();
+    const valueRetainer=/land cruiser|hilux|defender|jimny|wrangler|70 series|79|76|78/.test(nameLC);
     let vehicleValue=price;
     const years=[];let cum=0;
     for(let yr=1;yr<=10;yr++){
-      const depRate=yr===1?0.20:0.12;
+      const depRate=valueRetainer?(yr===1?0.10:0.07):(yr===1?0.20:0.12);
       const dep=Math.round(vehicleValue*depRate);
       vehicleValue-=dep;
       const fuel=Math.round(altKmYr/kml*FUEL_PRICE*Math.pow(1+FUEL_INFL,yr-1));
@@ -2579,13 +2586,18 @@ function renderVehicleDash(box,v){
   if(lifeKm&&stats.currentOdo){
     const lifePct=Math.min(100,Math.round(stats.currentOdo/lifeKm*100));
     const lifeColor=lifePct<50?'var(--green)':lifePct<75?'var(--orange)':'var(--red)';
+    const kmRemaining=lifeKm-stats.currentOdo;
+    const yearsRemaining=stats.annualKm>0?Math.round(kmRemaining/stats.annualKm*10)/10:0;
     h+=`<div style="margin-top:8px;font-size:11px">
       <div style="display:flex;justify-content:space-between;color:var(--t3);margin-bottom:3px">
-        <span>Vehicle life: ${lifePct}%</span>
+        <span>Vehicle life: ${lifePct}% used</span>
         <span>${stats.currentOdo.toLocaleString()} / ${lifeKm.toLocaleString()} km</span>
       </div>
       <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
         <div style="height:100%;width:${lifePct}%;background:${lifeColor};border-radius:3px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--t2)">
+        <span>⏳ Est. remaining: <b>${kmRemaining>0?kmRemaining.toLocaleString():'0'} km</b> · <b>${yearsRemaining>0?yearsRemaining:0} years</b> at ${Math.round(stats.annualKm).toLocaleString()} km/yr</span>
       </div>
     </div>`;
   }
@@ -2921,9 +2933,10 @@ function renderEconomicsSub(box,v){
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;font-size:12px">
       <div><span style="color:var(--t3)">Annual km:</span> <b>${Math.round(stats.annualKm).toLocaleString()} km</b></div>
       <div><span style="color:var(--t3)">Avg km/L:</span> <b>${stats.avgKmL.toFixed(1)}</b></div>
-      <div><span style="color:var(--t3)">Annual fuel:</span> <b>${formatR(stats.annualCost>0?stats.totalFuelCost/(stats.yearsOwned||1):0)}</b></div>
+      <div><span style="color:var(--t3)">Annual fuel (actual):</span> <b>${formatR(stats.annualCost>0?stats.totalFuelCost/(stats.yearsOwned||1):0)}</b></div>
+      <div><span style="color:var(--t3)">Annual fuel (projected):</span> <b style="color:var(--blue)">${formatR(Math.round(stats.annualKm/(stats.avgKmL||5)*21.50))}</b></div>
       <div><span style="color:var(--t3)">Annual maint:</span> <b>${formatR(stats.yearsOwned>0?stats.totalServiceCost/stats.yearsOwned:0)}</b></div>
-      <div><span style="color:var(--t3)">Annual insurance:</span> <b>${formatR(stats.yearsOwned>0?stats.insuranceCost/stats.yearsOwned:0)}</b></div>
+      <div><span style="color:var(--t3)">Annual insurance:</span> <b>${formatR(getActiveAnnualByCategory(curVeh,'insurance'))}</b></div>
       <div><span style="color:var(--t3)">Cost/km:</span> <b>R${stats.costPerKm.toFixed(2)}</b></div>
       <div><span style="color:var(--t3)">Total TCO:</span> <b>${formatR(stats.totalCost)}</b></div>
       <div><span style="color:var(--t3)">Years owned:</span> <b>${stats.yearsOwned.toFixed(1)}</b></div>
@@ -2934,6 +2947,7 @@ function renderEconomicsSub(box,v){
       <span>🛡 Ins: <b>${formatR(getActiveAnnualByCategory(curVeh,'insurance'))}/yr</b></span>
       <span>📋 Lic: <b>${formatR(getActiveAnnualByCategory(curVeh,'licence'))}/yr</b></span>
       <span>🔧 Maint: <b>R${(stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3).toFixed(2)}/km</b></span>
+      <span>🔥 Contingency: <b>${(new Date().getFullYear()-(+v.year||2000))>15?'R50k':'R'+(new Date().getFullYear()-(+v.year||2000)>10?'30k':'0')} Yr5</b></span>
     </div>
   </div>`;
   // Add comparison form
@@ -3076,6 +3090,28 @@ function renderEconomicsReport(res,keepName,stats){
       <td style="text-align:center;padding:6px;color:${cheapestNet.color}"><b>${esc(cheapestNet.name.slice(0,12))}</b></td>
     </tr>`;
     h+=`</table></div></div>`;
+  }
+  // Monthly cost comparison card
+  if(keepYrs.length&&alts.length){
+    const keepMonthly=Math.round((res.keepScenario?.netCost10Year||0)/120);
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Monthly cost comparison</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+        <div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center">
+          <div style="font-size:10px;color:var(--t3)">Keep ${esc(keepName)}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--blue);font-family:'DM Mono',monospace">${formatR(keepMonthly)}/mo</div>
+        </div>
+        ${alts.map((a,ai)=>{
+          const altMonthly=Math.round((a.netCost10Year||0)/120);
+          const diff=altMonthly-keepMonthly;
+          const col=['var(--red)','var(--orange)','var(--purple)','var(--teal)'][ai%4];
+          return`<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center">
+            <div style="font-size:10px;color:var(--t3)">${esc((a.name||'').slice(0,25))}</div>
+            <div style="font-size:18px;font-weight:700;color:${col};font-family:'DM Mono',monospace">${formatR(altMonthly)}/mo</div>
+            <div style="font-size:10px;color:${diff>0?'var(--red)':'var(--green)'}">${diff>0?'+':''}${formatR(Math.abs(diff))}/mo vs keep</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
   }
   return h;
 }
