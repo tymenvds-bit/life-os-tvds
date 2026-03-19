@@ -3369,6 +3369,25 @@ async function initApp(){
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
   // Push notification for overdue vehicle services
   checkServiceNotifications();
+  // Check backend health — warn if api.gs is outdated
+  checkBackendHealth();
+}
+
+const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock'];
+async function checkBackendHealth(){
+  if(!CFG.apiUrl)return;
+  try{
+    const r=await fetch(`${CFG.apiUrl}?action=ping&_=${Date.now()}`,{cache:'no-store'});
+    const d=await r.json();if(!d.ok)return;
+    const backendSheets=d.schemaKeys||[];
+    const missing=EXPECTED_SHEETS.filter(s=>!backendSheets.includes(s));
+    if(missing.length){
+      toast('⚠️ Backend outdated — missing: '+missing.join(', ')+'. Redeploy api.gs!',8000);
+      console.warn('Backend schema mismatch. Missing sheets:',missing);
+    } else {
+      console.log('✅ Backend health OK —',backendSheets.length,'sheets');
+    }
+  }catch(e){console.warn('Backend health check failed:',e.message);}
 }
 
 function checkServiceNotifications(){

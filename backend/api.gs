@@ -39,7 +39,7 @@ function doGet(e) {
   const sheet  = p.sheet  || 'Todos';
   try {
     if (action === 'read') return jsonResponse(readSheet(sheet));
-    if (action === 'ping') return jsonResponse({ ok: true, timestamp: new Date().toISOString() });
+    if (action === 'ping') return jsonResponse({ ok: true, timestamp: new Date().toISOString(), schemaKeys: Object.keys(SCHEMAS) });
     if (action === 'calendar') return jsonResponse(listCalEvents(p.days || 14));
     if (action === 'emails')  return jsonResponse(listUnreadEmails(p.max || 50));
   } catch(err) {

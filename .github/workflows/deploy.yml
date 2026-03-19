@@ -22,6 +22,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # Auto-bump service worker cache version using commit SHA
+      - name: Auto-version service worker
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          sed -i "s/const CACHE = 'life-os-v[^']*'/const CACHE = 'life-os-${SHORT_SHA}'/" sw.js
+          echo "SW cache version → life-os-${SHORT_SHA}"
+
+      # Warn if api.gs changed (needs manual redeploy)
+      - name: Check if backend changed
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q "^backend/api\.gs$"; then
+            echo "::warning::backend/api.gs was modified — you MUST redeploy Apps Script (Deploy → New version)"
+          fi
+
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
