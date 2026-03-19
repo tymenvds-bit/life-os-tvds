@@ -490,6 +490,8 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         <button class="veh-tab" onclick="setVehSub('economics',this)">📈 Economics</button>
         <button class="veh-tab" onclick="setVehSub('checks',this)">🔋 Checks</button>
         <button class="veh-tab" onclick="setVehSub('todos',this)">📝 Todos</button>
+        <button class="veh-tab" onclick="setVehSub('parts',this)">🔩 Parts</button>
+        <button class="veh-tab" onclick="setVehSub('trips',this)">📍 Trips</button>
       </div>
       <div id="veh-content"></div>
     </div>
@@ -607,7 +609,7 @@ let calEvents = [];
 let captureData = null;
 
 // ═══ STATE ═══
-let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[]};
+let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[],vehicle_parts:[],vehicle_tyres:[],tyre_rotations:[],modifications:[],incidents:[],trip_log:[]};
 let CFG = {apiUrl:'',apiKey:'',mode:'local'};
 let activeTimer = null, timerInterval = null, timerElapsed = 0;
 let todoFilter = 'all', expandedTodo = null;
@@ -838,8 +840,8 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos'];
-  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos'};
+  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
+  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos','VehicleParts':'vehicle_parts','VehicleTyres':'vehicle_tyres','TyreRotations':'tyre_rotations','Modifications':'modifications','Incidents':'incidents','TripLog':'trip_log'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
     const key=SHEET_MAP[s]||s.toLowerCase();
@@ -1692,6 +1694,28 @@ function openVehicleForm(editId){
       <input id="vf-annkm" type="number" placeholder="Annual km estimate" value="${v?.annualKmEstimate||''}" style="width:140px">
     </div>
     <textarea id="vf-notes" rows="2" placeholder="Notes…" style="margin-bottom:8px">${esc(v?.notes||'')}</textarea>
+    <div style="margin:10px 0 6px;font-size:11px;color:var(--gold);font-family:'DM Mono',monospace;letter-spacing:1px">📋 FLUID & TYRE SPECS</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-oilspec" placeholder="Oil spec (e.g. 15W-40)" value="${esc(v?.oilSpec||'')}" style="flex:1">
+      <input id="vf-oilcap" type="number" step="0.1" placeholder="Oil capacity (L)" value="${v?.oilCapacityL||''}" style="width:130px">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-coolanttype" placeholder="Coolant type" value="${esc(v?.coolantType||'')}" style="flex:1">
+      <input id="vf-coolantcap" type="number" step="0.1" placeholder="Coolant capacity (L)" value="${v?.coolantCapacityL||''}" style="width:130px">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-brakefluid" placeholder="Brake fluid (e.g. DOT 4)" value="${esc(v?.brakeFluidType||'')}" style="flex:1">
+      <input id="vf-transfluid" placeholder="Trans fluid" value="${esc(v?.transFluidType||'')}" style="flex:1">
+      <input id="vf-difffluid" placeholder="Diff fluid" value="${esc(v?.diffFluidType||'')}" style="flex:1">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="vf-tyresize" placeholder="Tyre size (e.g. 265/75R16)" value="${esc(v?.tyreSize||'')}" style="flex:1">
+      <input id="vf-tpf" placeholder="Front pressure (e.g. 2.2 bar)" value="${esc(v?.tyrePressureFront||'')}" style="flex:1">
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="vf-tpr" placeholder="Rear pressure" value="${esc(v?.tyrePressureRear||'')}" style="flex:1">
+      <input id="vf-tps" placeholder="Spare pressure" value="${esc(v?.tyrePressureSpare||'')}" style="flex:1">
+    </div>
     <div class="modal-actions">
       ${v?`<button class="btn" style="color:var(--red)" onclick="deleteVehicle('${v.id}')">Delete</button>`:''}
       <button class="btn" onclick="closeModal()">Cancel</button>
@@ -1704,7 +1728,7 @@ function openVehicleForm(editId){
 function saveVehicle(editId){
   const g=id=>document.getElementById(id)?.value||'';
   const name=g('vf-name').trim();if(!name){toast('Enter vehicle name');return;}
-  const data={name,make:g('vf-make'),model:g('vf-model'),variant:g('vf-variant'),year:g('vf-year'),engine:g('vf-engine'),fuelType:g('vf-fueltype'),regNumber:g('vf-reg'),vin:'',purchaseDate:g('vf-pdate'),purchaseOdo:g('vf-podo'),purchasePrice:g('vf-pprice'),tankCapacityL:g('vf-tank'),currentOdo:g('vf-odo'),isActive:'1',category:g('vf-cat'),notes:g('vf-notes'),expectedLifeKm:g('vf-lifekm'),expectedLifeYears:g('vf-lifeyrs'),annualKmEstimate:g('vf-annkm')};
+  const data={name,make:g('vf-make'),model:g('vf-model'),variant:g('vf-variant'),year:g('vf-year'),engine:g('vf-engine'),fuelType:g('vf-fueltype'),regNumber:g('vf-reg'),vin:'',purchaseDate:g('vf-pdate'),purchaseOdo:g('vf-podo'),purchasePrice:g('vf-pprice'),tankCapacityL:g('vf-tank'),currentOdo:g('vf-odo'),isActive:'1',category:g('vf-cat'),notes:g('vf-notes'),expectedLifeKm:g('vf-lifekm'),expectedLifeYears:g('vf-lifeyrs'),annualKmEstimate:g('vf-annkm'),oilSpec:g('vf-oilspec'),oilCapacityL:g('vf-oilcap'),coolantType:g('vf-coolanttype'),coolantCapacityL:g('vf-coolantcap'),brakeFluidType:g('vf-brakefluid'),transFluidType:g('vf-transfluid'),diffFluidType:g('vf-difffluid'),tyreSize:g('vf-tyresize'),tyrePressureFront:g('vf-tpf'),tyrePressureRear:g('vf-tpr'),tyrePressureSpare:g('vf-tps')};
   if(editId){
     const v=getVehicle(editId);if(v)Object.assign(v,data);
     apiPost('update','Vehicles',{id:String(editId),patch:data});
@@ -2859,6 +2883,274 @@ function exportVehicleData(vid){
   URL.revokeObjectURL(url);toast('📥 Exported '+v.name+' data');
 }
 
+// --- Vehicle Parts ---
+const PART_CATS={engine:'🔧 Engine',brakes:'🛞 Brakes',electrical:'⚡ Electrical',suspension:'🔩 Suspension',body:'🚗 Body',interior:'💺 Interior',other:'📦 Other'};
+function getVehicleParts(vid){return DB.vehicle_parts.filter(p=>String(p.vehicleId)===String(vid)).sort((a,b)=>(a.category||'').localeCompare(b.category||'')||(a.description||'').localeCompare(b.description||''));}
+let editingPartId=null;
+function addPart(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const desc=g('pt-desc').trim();if(!desc){toast('Enter description');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),partNumber:g('pt-num'),description:desc,category:g('pt-cat')||'other',brand:g('pt-brand'),supplier:g('pt-supplier'),qtyOnHand:g('pt-qty')||'0',qtyMin:g('pt-qtymin')||'0',unitPrice:g('pt-price')||'0',location:g('pt-location'),notes:g('pt-notes'),createdAt:niso()};
+  DB.vehicle_parts.push(entry);apiPost('append','VehicleParts',{row:entry});
+  ['pt-num','pt-desc','pt-brand','pt-supplier','pt-qty','pt-qtymin','pt-price','pt-location','pt-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Part added');
+}
+function editPart(id){
+  editingPartId=id;renderVehicles();
+  setTimeout(()=>{const el=document.getElementById('pt-desc');if(el)el.focus();},100);
+}
+function updatePart(){
+  const p=DB.vehicle_parts.find(p=>String(p.id)===String(editingPartId));if(!p)return;
+  const g=id=>document.getElementById(id)?.value||'';
+  const patch={partNumber:g('pt-num'),description:g('pt-desc'),category:g('pt-cat'),brand:g('pt-brand'),supplier:g('pt-supplier'),qtyOnHand:g('pt-qty'),qtyMin:g('pt-qtymin'),unitPrice:g('pt-price'),location:g('pt-location'),notes:g('pt-notes')};
+  Object.assign(p,patch);apiPost('update','VehicleParts',{id:String(editingPartId),patch});
+  editingPartId=null;renderVehicles();toast('Part updated');
+}
+function cancelEditPart(){editingPartId=null;renderVehicles();}
+function delPart(id){
+  DB.vehicle_parts=DB.vehicle_parts.filter(p=>String(p.id)!==String(id));
+  apiPost('delete','VehicleParts',{id:String(id)});renderVehicles();toast('Part deleted');
+}
+function usePart(id){
+  const p=DB.vehicle_parts.find(p=>String(p.id)===String(id));if(!p)return;
+  const qty=+(p.qtyOnHand||0);if(qty<=0){toast('No stock');return;}
+  p.qtyOnHand=String(qty-1);apiPost('update','VehicleParts',{id:String(id),patch:{qtyOnHand:p.qtyOnHand}});
+  renderVehicles();toast('Used 1x '+p.description+' — '+p.qtyOnHand+' left');
+}
+let partCatFilter='all';
+function setPartCatFilter(f){partCatFilter=f;renderVehicles();}
+
+// --- Vehicle Tyres ---
+function getVehicleTyres(vid){return DB.vehicle_tyres.filter(t=>String(t.vehicleId)===String(vid)).sort((a,b)=>(a.currentPosition||'').localeCompare(b.currentPosition||''));}
+function getTyreRotations(vid){return DB.tyre_rotations.filter(r=>String(r.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function addTyre(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const brand=g('ty-brand').trim();if(!brand){toast('Enter tyre brand');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),brand,model:g('ty-model'),size:g('ty-size'),dotCode:g('ty-dot'),purchaseDate:g('ty-pdate')||TODAY,purchasePrice:g('ty-price')||'',currentPosition:g('ty-pos')||'Spare 1',initialTread:g('ty-tread')||'8',notes:g('ty-notes'),createdAt:niso()};
+  DB.vehicle_tyres.push(entry);apiPost('append','VehicleTyres',{row:entry});
+  ['ty-brand','ty-model','ty-size','ty-dot','ty-price','ty-tread','ty-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Tyre added');
+}
+function editTyre(id){
+  const t=DB.vehicle_tyres.find(t=>String(t.id)===String(id));if(!t)return;
+  const html=`<div class="modal-title">Edit Tyre</div>
+    <div class="row" style="margin-bottom:6px"><input id="tye-brand" placeholder="Brand" value="${esc(t.brand||'')}"><input id="tye-model" placeholder="Model" value="${esc(t.model||'')}"></div>
+    <div class="row" style="margin-bottom:6px"><input id="tye-size" placeholder="Size" value="${esc(t.size||'')}"><input id="tye-dot" placeholder="DOT code" value="${esc(t.dotCode||'')}"></div>
+    <div class="row" style="margin-bottom:6px"><input id="tye-pdate" type="date" value="${t.purchaseDate||''}"><input id="tye-price" type="number" placeholder="Price (R)" value="${t.purchasePrice||''}"></div>
+    <div class="row" style="margin-bottom:6px">
+      <select id="tye-pos"><option value="LF"${t.currentPosition==='LF'?' selected':''}>LF</option><option value="RF"${t.currentPosition==='RF'?' selected':''}>RF</option><option value="LR"${t.currentPosition==='LR'?' selected':''}>LR</option><option value="RR"${t.currentPosition==='RR'?' selected':''}>RR</option><option value="Spare 1"${t.currentPosition==='Spare 1'?' selected':''}>Spare 1</option><option value="Spare 2"${t.currentPosition==='Spare 2'?' selected':''}>Spare 2</option></select>
+      <input id="tye-notes" placeholder="Notes" value="${esc(t.notes||'')}">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTyreEdit('${id}')">Save</button>
+    </div>`;
+  document.getElementById('veh-modal-body').innerHTML=html;
+  document.getElementById('veh-modal').style.display='flex';
+}
+function saveTyreEdit(id){
+  const t=DB.vehicle_tyres.find(t=>String(t.id)===String(id));if(!t)return;
+  const g=i=>document.getElementById(i)?.value||'';
+  const patch={brand:g('tye-brand'),model:g('tye-model'),size:g('tye-size'),dotCode:g('tye-dot'),purchaseDate:g('tye-pdate'),purchasePrice:g('tye-price'),currentPosition:g('tye-pos'),notes:g('tye-notes')};
+  Object.assign(t,patch);apiPost('update','VehicleTyres',{id:String(id),patch});
+  closeModal();renderVehicles();toast('Tyre updated');
+}
+function delTyre(id){
+  DB.vehicle_tyres=DB.vehicle_tyres.filter(t=>String(t.id)!==String(id));
+  apiPost('delete','VehicleTyres',{id:String(id)});renderVehicles();toast('Tyre deleted');
+}
+function rotateTyres(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const tyres=getVehicleTyres(curVeh);
+  if(tyres.length<2){toast('Need at least 2 tyres to rotate');return;}
+  const posMap={};tyres.forEach(t=>{posMap[t.currentPosition]=t;});
+  const POSITIONS=['LF','RF','LR','RR','Spare 1','Spare 2'];
+  let html=`<div class="modal-title">🔄 Rotate Tyres</div>
+    <div style="margin-bottom:12px;font-size:12px;color:var(--t2)">Current positions:</div>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;text-align:center;max-width:300px;margin:0 auto 16px">
+      <div style="padding:8px;background:var(--bg2);border-radius:var(--r);font-size:11px"><b>LF</b><br>${posMap['LF']?esc(posMap['LF'].brand+' '+posMap['LF'].model):'—'}</div>
+      <div style="display:flex;align-items:center;font-size:24px">🚗</div>
+      <div style="padding:8px;background:var(--bg2);border-radius:var(--r);font-size:11px"><b>RF</b><br>${posMap['RF']?esc(posMap['RF'].brand+' '+posMap['RF'].model):'—'}</div>
+      <div style="padding:8px;background:var(--bg2);border-radius:var(--r);font-size:11px"><b>LR</b><br>${posMap['LR']?esc(posMap['LR'].brand+' '+posMap['LR'].model):'—'}</div>
+      <div></div>
+      <div style="padding:8px;background:var(--bg2);border-radius:var(--r);font-size:11px"><b>RR</b><br>${posMap['RR']?esc(posMap['RR'].brand+' '+posMap['RR'].model):'—'}</div>
+    </div>
+    <div style="margin-bottom:12px"><div style="font-size:11px;color:var(--t3);margin-bottom:6px">Preset patterns:</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="applyRotatePreset('cross4')">✕ Cross 4</button>
+      <button class="btn btn-sm" onclick="applyRotatePreset('straight4')">⇅ Straight 4</button>
+      ${posMap['Spare 1']?`<button class="btn btn-sm" onclick="applyRotatePreset('5tyre')">⟳ 5-Tyre</button>`:''}
+    </div></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:6px">New positions:</div>`;
+  POSITIONS.forEach(pos=>{
+    if(!posMap[pos]&&!tyres.some(t=>true))return;
+    html+=`<div class="row" style="margin-bottom:4px;align-items:center"><span style="width:60px;font-size:12px;font-weight:500">${pos}:</span>
+      <select id="rot-${pos.replace(/\s/g,'')}" style="flex:1"><option value="">— empty —</option>${tyres.map(t=>`<option value="${t.id}"${t.currentPosition===pos?' selected':''}>${esc(t.brand+' '+t.model)} (was ${t.currentPosition})</option>`).join('')}</select></div>`;
+  });
+  html+=`<div class="modal-actions" style="margin-top:12px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTyreRotation('${curVeh}')">Save Rotation</button>
+    </div>`;
+  document.getElementById('veh-modal-body').innerHTML=html;
+  document.getElementById('veh-modal').style.display='flex';
+}
+function applyRotatePreset(preset){
+  const tyres=getVehicleTyres(curVeh);
+  const posMap={};tyres.forEach(t=>{posMap[t.currentPosition]=t;});
+  let moves={};
+  if(preset==='cross4'){
+    // LF→RR, RF→LR, LR→RF, RR→LF
+    if(posMap['LF'])moves['RR']=posMap['LF'].id;
+    if(posMap['RF'])moves['LR']=posMap['RF'].id;
+    if(posMap['LR'])moves['RF']=posMap['LR'].id;
+    if(posMap['RR'])moves['LF']=posMap['RR'].id;
+  } else if(preset==='straight4'){
+    // LF→LR, RF→RR, LR→LF, RR→RF
+    if(posMap['LF'])moves['LR']=posMap['LF'].id;
+    if(posMap['RF'])moves['RR']=posMap['RF'].id;
+    if(posMap['LR'])moves['LF']=posMap['LR'].id;
+    if(posMap['RR'])moves['RF']=posMap['RR'].id;
+  } else if(preset==='5tyre'){
+    // Include spare: LF→Spare1, Spare1→RR, RR→LR, LR→RF, RF→LF
+    if(posMap['LF'])moves['Spare1']=posMap['LF'].id;
+    if(posMap['Spare 1'])moves['RR']=posMap['Spare 1'].id;
+    if(posMap['RR'])moves['LR']=posMap['RR'].id;
+    if(posMap['LR'])moves['RF']=posMap['LR'].id;
+    if(posMap['RF'])moves['LF']=posMap['RF'].id;
+  }
+  const POSITIONS=['LF','RF','LR','RR','Spare1','Spare2'];
+  POSITIONS.forEach(pos=>{
+    const sel=document.getElementById('rot-'+pos);
+    if(sel&&moves[pos])sel.value=moves[pos];
+  });
+}
+function saveTyreRotation(vid){
+  const tyres=getVehicleTyres(vid);
+  const POSITIONS=['LF','RF','LR','RR','Spare1','Spare2'];
+  const POS_LABELS={'Spare1':'Spare 1','Spare2':'Spare 2'};
+  const moves=[];
+  POSITIONS.forEach(pos=>{
+    const sel=document.getElementById('rot-'+pos);
+    if(!sel)return;
+    const tyreId=sel.value;if(!tyreId)return;
+    const posLabel=POS_LABELS[pos]||pos;
+    const tyre=tyres.find(t=>String(t.id)===String(tyreId));
+    if(tyre&&tyre.currentPosition!==posLabel){
+      moves.push({tyreId,from:tyre.currentPosition,to:posLabel});
+      tyre.currentPosition=posLabel;
+      apiPost('update','VehicleTyres',{id:String(tyreId),patch:{currentPosition:posLabel}});
+    }
+  });
+  if(!moves.length){closeModal();toast('No changes');return;}
+  const rotEntry={id:uid(),vehicleId:String(vid),date:TODAY,odometer:getVehicle(vid)?.currentOdo||'',moves:JSON.stringify(moves),notes:'',createdAt:niso()};
+  DB.tyre_rotations.push(rotEntry);apiPost('append','TyreRotations',{row:rotEntry});
+  closeModal();renderVehicles();toast('Tyres rotated — '+moves.length+' moves');
+}
+
+function getTyreLifePrediction(tyreId){
+  const checks=DB.vehicle_checks.filter(c=>c.checkType==='tyres').sort((a,b)=>a.date.localeCompare(b.date));
+  const readings=[];
+  checks.forEach(c=>{
+    try{
+      const d=JSON.parse(c.data||'{}');
+      if(d.readings){
+        const r=d.readings.find(r=>r.tyreId===tyreId);
+        if(r)readings.push({depth:+r.depth,odo:+c.odometer||0,date:c.date});
+      } else {
+        // Legacy format — try to match by position
+        const tyre=DB.vehicle_tyres.find(t=>String(t.id)===String(tyreId));
+        if(tyre){
+          const pos=tyre.currentPosition;
+          const posKey=pos==='LF'?'lf':pos==='RF'?'rf':pos==='LR'?'lr':pos==='RR'?'rr':null;
+          if(posKey&&d[posKey])readings.push({depth:+d[posKey],odo:+c.odometer||0,date:c.date});
+        }
+      }
+    }catch{}
+  });
+  if(readings.length<2)return null;
+  const first=readings[0],last=readings[readings.length-1];
+  const depthLost=first.depth-last.depth;
+  const kmBetween=last.odo-first.odo;
+  if(depthLost<=0||kmBetween<=0)return null;
+  const wearRate=depthLost/kmBetween;
+  const depthRemaining=last.depth-1.6;
+  if(depthRemaining<=0)return{kmRemaining:0,yearsRemaining:0,lastDepth:last.depth,wearRatePerKm:wearRate};
+  const kmRemaining=Math.round(depthRemaining/wearRate);
+  const v=getVehicle(curVeh);
+  const annualKm=+(v?.annualKmEstimate)||16000;
+  const yearsRemaining=+(kmRemaining/annualKm).toFixed(1);
+  return{kmRemaining,yearsRemaining,lastDepth:last.depth,wearRatePerKm:wearRate};
+}
+
+// --- Modifications ---
+const MOD_CATEGORIES={performance:'⚡ Performance',suspension:'🔩 Suspension',electrical:'💡 Electrical',body:'🚗 Body',interior:'💺 Interior',sound:'🔊 Sound',safety:'🛡 Safety',other:'📦 Other'};
+function getModifications(vid){return DB.modifications.filter(m=>String(m.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function addModification(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const desc=g('mod-desc').trim();if(!desc){toast('Enter description');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),date:g('mod-date')||TODAY,category:g('mod-cat')||'other',description:desc,cost:g('mod-cost')||'0',supplier:g('mod-supplier'),notes:g('mod-notes'),createdAt:niso()};
+  DB.modifications.push(entry);apiPost('append','Modifications',{row:entry});
+  ['mod-desc','mod-cost','mod-supplier','mod-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Modification logged');
+}
+function delModification(id){
+  DB.modifications=DB.modifications.filter(m=>String(m.id)!==String(id));
+  apiPost('delete','Modifications',{id:String(id)});renderVehicles();toast('Modification deleted');
+}
+
+// --- Incidents ---
+function getIncidents(vid){return DB.incidents.filter(i=>String(i.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function addIncident(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const desc=g('inc-desc').trim();if(!desc){toast('Enter description');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),date:g('inc-date')||TODAY,description:desc,isResolved:g('inc-resolved')==='1'?'1':'0',claimNumber:g('inc-claim'),cost:g('inc-cost')||'0',notes:g('inc-notes'),createdAt:niso()};
+  DB.incidents.push(entry);apiPost('append','Incidents',{row:entry});
+  ['inc-desc','inc-claim','inc-cost','inc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Incident logged');
+}
+function delIncident(id){
+  DB.incidents=DB.incidents.filter(i=>String(i.id)!==String(id));
+  apiPost('delete','Incidents',{id:String(id)});renderVehicles();toast('Incident deleted');
+}
+
+// --- Trip Log ---
+function getTripLog(vid){return DB.trip_log.filter(t=>String(t.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
+function addTrip(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const startOdo=+g('tr-start');const endOdo=+g('tr-end');
+  if(!startOdo||!endOdo||endOdo<=startOdo){toast('Enter valid start/end odometer');return;}
+  const distance=endOdo-startOdo;
+  const entry={id:uid(),vehicleId:String(curVeh),date:g('tr-date')||TODAY,startOdo:String(startOdo),endOdo:String(endOdo),distance:String(distance),purpose:g('tr-purpose'),tripType:g('tr-type')||'personal',route:g('tr-route'),notes:g('tr-notes'),createdAt:niso()};
+  DB.trip_log.push(entry);apiPost('append','TripLog',{row:entry});
+  // Update vehicle odo if needed
+  const v=getVehicle(curVeh);if(v&&endOdo>+(v.currentOdo||0)){v.currentOdo=String(endOdo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(endOdo)}});}
+  ['tr-start','tr-end','tr-purpose','tr-route','tr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Trip logged — '+distance+' km');
+}
+function delTrip(id){
+  DB.trip_log=DB.trip_log.filter(t=>String(t.id)!==String(id));
+  apiPost('delete','TripLog',{id:String(id)});renderVehicles();toast('Trip deleted');
+}
+function exportTrips(vid){
+  const trips=getTripLog(vid);if(!trips.length){toast('No trips to export');return;}
+  const v=getVehicle(vid);
+  let csv='TRIP LOG EXPORT - '+esc(v?.name||'Vehicle')+' - Generated '+TODAY+'\n';
+  csv+='Date,Start ODO,End ODO,Distance (km),Type,Purpose,Route,Notes\n';
+  trips.forEach(t=>{csv+=[t.date,t.startOdo,t.endOdo,t.distance,t.tripType,'"'+(t.purpose||'')+'"','"'+(t.route||'')+'"','"'+(t.notes||'')+'"'].join(',')+'\n';});
+  // Monthly summary
+  const months={};trips.forEach(t=>{const m=(t.date||'').slice(0,7);if(!months[m])months[m]={business:0,personal:0,mixed:0};months[m][t.tripType||'personal']+=(+t.distance||0);});
+  csv+='\nMONTHLY SUMMARY\nMonth,Business km,Personal km,Mixed km,Total km,Business %\n';
+  Object.entries(months).sort().forEach(([m,d])=>{const total=d.business+d.personal+d.mixed;csv+=[m,d.business,d.personal,d.mixed,total,total?Math.round(d.business/total*100)+'%':'0%'].join(',')+'\n';});
+  const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=(v?.name||'vehicle').replace(/[^a-zA-Z0-9]/g,'_')+'_trips_'+TODAY+'.csv';a.click();
+  URL.revokeObjectURL(url);toast('📥 Exported trip log');
+}
+
 function calcVehicleStats(vid){
   const v=getVehicle(vid);const fuel=getVehicleFuel(vid);const services=getVehicleServices(vid);const expenses=getVehicleExpenses(vid);
   const fuelWithKm=fuel.filter(f=>+f.kmPerL>0);
@@ -2945,6 +3237,8 @@ function renderVehicles(){
   else if(curVehSub==='economics') renderEconomicsSub(box,v);
   else if(curVehSub==='checks') renderChecksSub(box,v);
   else if(curVehSub==='todos') renderVehicleTodosSub(box,v);
+  else if(curVehSub==='parts') renderPartsSub(box,v);
+  else if(curVehSub==='trips') renderTripsSub(box,v);
 }
 
 function renderVehicleDash(box,v){
@@ -3011,6 +3305,56 @@ function renderVehicleDash(box,v){
         ${a.cost?`<span style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${formatR(a.cost)}</span>`:''}
       </div>`;
     });
+    h+=`</div>`;
+  }
+  // Specs card
+  const hasSpecs=v.oilSpec||v.oilCapacityL||v.coolantType||v.coolantCapacityL||v.brakeFluidType||v.transFluidType||v.diffFluidType||v.tyreSize||v.tyrePressureFront||v.tyrePressureRear||v.tyrePressureSpare;
+  if(hasSpecs){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">📋 Specs</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">`;
+    if(v.oilSpec)h+=`<span style="color:var(--t3)">Oil:</span><span>${esc(v.oilSpec)}${v.oilCapacityL?' ('+v.oilCapacityL+'L)':''}</span>`;
+    if(v.coolantType)h+=`<span style="color:var(--t3)">Coolant:</span><span>${esc(v.coolantType)}${v.coolantCapacityL?' ('+v.coolantCapacityL+'L)':''}</span>`;
+    if(v.brakeFluidType)h+=`<span style="color:var(--t3)">Brake fluid:</span><span>${esc(v.brakeFluidType)}</span>`;
+    if(v.transFluidType)h+=`<span style="color:var(--t3)">Trans fluid:</span><span>${esc(v.transFluidType)}</span>`;
+    if(v.diffFluidType)h+=`<span style="color:var(--t3)">Diff fluid:</span><span>${esc(v.diffFluidType)}</span>`;
+    if(v.tyreSize)h+=`<span style="color:var(--t3)">Tyre size:</span><span>${esc(v.tyreSize)}</span>`;
+    if(v.tyrePressureFront)h+=`<span style="color:var(--t3)">Tyre pressure F:</span><span>${esc(v.tyrePressureFront)}</span>`;
+    if(v.tyrePressureRear)h+=`<span style="color:var(--t3)">Tyre pressure R:</span><span>${esc(v.tyrePressureRear)}</span>`;
+    if(v.tyrePressureSpare)h+=`<span style="color:var(--t3)">Tyre pressure S:</span><span>${esc(v.tyrePressureSpare)}</span>`;
+    h+=`</div></div>`;
+  }
+  // Modification log
+  const mods=getModifications(curVeh);
+  {
+    const MOD_CATS={performance:'⚡',suspension:'🔩',electrical:'💡',body:'🚗',interior:'💺',sound:'🔊',safety:'🛡',other:'📦'};
+    const totalModCost=mods.reduce((s,m)=>s+(+m.cost||0),0);
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between">Modifications (${mods.length}) ${totalModCost?`<span style="color:var(--gold)">${formatR(totalModCost)}</span>`:''}</div>`;
+    if(mods.length){
+      mods.forEach(m=>{
+        h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto">
+          <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${m.date||''}</span>
+          <span style="font-size:15px">${MOD_CATS[m.category]||'📦'}</span>
+          <div style="min-width:0"><span style="color:var(--t2)">${esc(m.description||'')}</span>${m.supplier?`<span style="font-size:10px;color:var(--t3);margin-left:6px">· ${esc(m.supplier)}</span>`:''}</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            ${m.cost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(m.cost)}</span>`:''}
+            <button class="btn-icon" onclick="delModification('${m.id}')">🗑</button>
+          </div>
+        </div>`;
+      });
+    }
+    // Add modification form
+    h+=`<div style="border-top:1px solid var(--b);margin-top:6px;padding-top:8px">
+      <div class="row" style="margin-bottom:4px">
+        <input id="mod-date" type="date" value="${TODAY}" style="width:130px">
+        <select id="mod-cat" style="width:130px">${Object.entries(MOD_CATEGORIES).map(([k,v2])=>`<option value="${k}">${v2}</option>`).join('')}</select>
+        <input id="mod-desc" placeholder="Description" style="flex:2">
+      </div>
+      <div class="row">
+        <input id="mod-cost" type="number" placeholder="Cost (R)" style="width:100px">
+        <input id="mod-supplier" placeholder="Supplier" style="flex:1">
+        <input id="mod-notes" placeholder="Notes" style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="addModification()">+ Mod</button>
+      </div>
+    </div>`;
     h+=`</div>`;
   }
   // Vehicle info footer
@@ -3200,6 +3544,41 @@ function renderServicesSub(box,v){
           ${s.totalCost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(s.totalCost)}</span>`:''}
           ${(()=>{try{const p=JSON.parse(s.parts||'[]');return Array.isArray(p)&&p.length&&p[0].name?`<button class="btn-icon" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" title="View checklist">📋</button><div style="display:none;position:absolute;right:0;top:100%;background:var(--bg);border:1px solid var(--bg3);border-radius:6px;padding:6px;z-index:10;min-width:200px;font-size:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)">${p.map(i=>'✅ '+esc(i.name)+(i.note?' — <i>'+esc(i.note)+'</i>':'')).join('<br>')}</div>`:'';}catch{return '';}})()}
           <button class="btn-icon" onclick="delServiceLog('${s.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
+  // Incident log
+  const incidents=getIncidents(curVeh);
+  h+=`<div class="card" style="margin-top:10px"><div class="card-title">🚨 Incidents (${incidents.length})</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="inc-date" type="date" value="${TODAY}" style="width:130px">
+      <input id="inc-desc" placeholder="Description (e.g. Fender bender, stone chip)" style="flex:2">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <select id="inc-resolved" style="width:110px"><option value="0">Unresolved</option><option value="1">Resolved</option></select>
+      <input id="inc-claim" placeholder="Claim number" style="flex:1">
+      <input id="inc-cost" type="number" placeholder="Cost (R)" style="width:100px">
+      <input id="inc-notes" placeholder="Notes" style="flex:1">
+    </div>
+    <div class="row"><button class="btn btn-primary" onclick="addIncident()">+ Log Incident</button></div>`;
+  if(incidents.length){
+    incidents.forEach(i=>{
+      const resolved=i.isResolved==='1';
+      const incBg=resolved?'#0a1a0a22':'#1a080822';
+      const incColor=resolved?'var(--green)':'var(--red)';
+      h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto;margin-top:6px">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${i.date||''}</span>
+        <span class="tag" style="background:${incBg};color:${incColor};font-size:10px">${resolved?'Resolved':'Open'}</span>
+        <div style="min-width:0">
+          <span style="color:var(--t2)">${esc(i.description||'')}</span>
+          ${i.claimNumber?`<span style="font-size:10px;color:var(--blue);margin-left:6px;font-family:'DM Mono',monospace">#${esc(i.claimNumber)}</span>`:''}
+          ${i.notes?`<div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(i.notes)}</div>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          ${i.cost&&+i.cost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(i.cost)}</span>`:''}
+          <button class="btn-icon" onclick="delIncident('${i.id}')">🗑</button>
         </div>
       </div>`;
     });
@@ -3574,7 +3953,93 @@ function renderEconomicsReport(res,keepName,stats){
 function renderChecksSub(box,v){
   const battChecks=getVehicleChecks(curVeh,'battery');
   const tyreChecks=getVehicleChecks(curVeh,'tyres');
+  const tyres=getVehicleTyres(curVeh);
+  const hasTyres=tyres.length>0;
   let h='';
+  // Tyre visual layout (if tyres registered)
+  if(hasTyres){
+    const posMap={};tyres.forEach(t=>{posMap[t.currentPosition]=t;});
+    const tc=d=>d>=5?'var(--green)':d>=3?'var(--orange)':'var(--red)';
+    const lastTyreCheck=tyreChecks[0];
+    let lastData={};try{lastData=JSON.parse(lastTyreCheck?.data||'{}');}catch{}
+    const getTyreDepth=(pos)=>{
+      const tyre=posMap[pos];
+      if(!tyre)return null;
+      // Check new format first (readings with tyreId)
+      if(lastData.readings){
+        const r=lastData.readings.find(r=>r.tyreId===tyre.id);
+        if(r)return +r.depth;
+      }
+      // Legacy format
+      const posKey=pos==='LF'?'lf':pos==='RF'?'rf':pos==='LR'?'lr':pos==='RR'?'rr':null;
+      if(posKey&&lastData[posKey])return +lastData[posKey];
+      return null;
+    };
+    const renderPos=(pos)=>{
+      const tyre=posMap[pos];if(!tyre)return `<div style="padding:8px;background:var(--bg2);border-radius:var(--r);font-size:11px;text-align:center"><b>${pos}</b><br><span style="color:var(--t3)">empty</span></div>`;
+      const depth=getTyreDepth(pos);
+      const pred=getTyreLifePrediction(tyre.id);
+      return `<div style="padding:8px;background:var(--bg2);border:1px solid var(--b);border-radius:var(--r);font-size:11px;text-align:center;cursor:pointer" onclick="editTyre('${tyre.id}')">
+        <b>${pos}</b><br>
+        <span style="color:var(--t2)">${esc(tyre.brand)} ${esc(tyre.model||'')}</span><br>
+        ${depth!==null?`<span style="color:${tc(depth)};font-weight:600;font-family:'DM Mono',monospace">${depth}mm</span>`:`<span style="color:var(--t3)">—</span>`}
+        ${pred?`<br><span style="font-size:9px;color:var(--t3)">${pred.kmRemaining>0?pred.kmRemaining.toLocaleString()+'km left':'⚠ Replace'}</span>`:''}
+      </div>`;
+    };
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">🛞 Tyre Positions <button class="btn btn-sm" onclick="rotateTyres()">🔄 Rotate</button></div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;max-width:320px;margin:0 auto 12px">
+        ${renderPos('LF')}
+        <div style="display:flex;align-items:center;font-size:24px">🚗</div>
+        ${renderPos('RF')}
+        ${renderPos('LR')}
+        <div></div>
+        ${renderPos('RR')}
+      </div>`;
+    // Spare tyres
+    const spares=tyres.filter(t=>t.currentPosition&&t.currentPosition.startsWith('Spare'));
+    if(spares.length){
+      h+=`<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Spare tyres:</div>`;
+      spares.forEach(t=>{
+        const depth=getTyreDepth(t.currentPosition);
+        h+=`<div style="display:flex;justify-content:space-between;padding:4px 8px;background:var(--bg2);border-radius:var(--r);margin-bottom:4px;font-size:11px;cursor:pointer" onclick="editTyre('${t.id}')">
+          <span><b>${esc(t.currentPosition)}</b> — ${esc(t.brand)} ${esc(t.model||'')}</span>
+          ${depth!==null?`<span style="color:${tc(depth)};font-family:'DM Mono',monospace">${depth}mm</span>`:''}
+        </div>`;
+      });
+    }
+    // Add tyre form
+    h+=`<div style="border-top:1px solid var(--b);margin-top:8px;padding-top:8px">
+      <div style="font-size:10px;color:var(--t3);margin-bottom:4px">Add tyre:</div>
+      <div class="row" style="margin-bottom:4px">
+        <input id="ty-brand" placeholder="Brand" style="flex:1">
+        <input id="ty-model" placeholder="Model" style="flex:1">
+        <input id="ty-size" placeholder="Size" style="width:110px" value="${esc(v.tyreSize||'')}">
+      </div>
+      <div class="row" style="margin-bottom:4px">
+        <input id="ty-dot" placeholder="DOT code" style="flex:1">
+        <input id="ty-pdate" type="date" value="${TODAY}" style="width:130px">
+        <input id="ty-price" type="number" placeholder="Price (R)" style="width:100px">
+      </div>
+      <div class="row">
+        <select id="ty-pos" style="width:100px"><option value="LF">LF</option><option value="RF">RF</option><option value="LR">LR</option><option value="RR">RR</option><option value="Spare 1" selected>Spare 1</option><option value="Spare 2">Spare 2</option></select>
+        <input id="ty-tread" type="number" step="0.1" placeholder="Initial tread (mm)" style="width:120px" value="8">
+        <input id="ty-notes" placeholder="Notes" style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="addTyre()">+ Tyre</button>
+      </div>
+    </div>`;
+    // All tyres list
+    h+=`<div style="border-top:1px solid var(--b);margin-top:8px;padding-top:8px;font-size:10px;color:var(--t3)">All tyres (${tyres.length}):</div>`;
+    tyres.forEach(t=>{
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--b);font-size:11px">
+        <span><b>${esc(t.currentPosition||'?')}</b> ${esc(t.brand)} ${esc(t.model||'')}${t.dotCode?' · DOT '+esc(t.dotCode):''}${t.purchaseDate?' · '+t.purchaseDate:''}</span>
+        <div style="display:flex;gap:2px">
+          <button class="btn-icon" onclick="editTyre('${t.id}')">✏️</button>
+          <button class="btn-icon" onclick="delTyre('${t.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
   // Battery section
   h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🔋 Battery Check</div>
     <div class="row" style="margin-bottom:6px">
@@ -3617,36 +4082,107 @@ function renderChecksSub(box,v){
     }
     h+=`</div>`;
   }
-  // Tyre section
-  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🛞 Tyre Tread Check</div>
-    <div class="row" style="margin-bottom:6px">
-      <input id="ck-lf" type="number" step="0.1" placeholder="LF (mm)" style="width:90px">
-      <input id="ck-rf" type="number" step="0.1" placeholder="RF (mm)" style="width:90px">
-    </div>
-    <div class="row" style="margin-bottom:6px">
-      <input id="ck-lr" type="number" step="0.1" placeholder="LR (mm)" style="width:90px">
-      <input id="ck-rr" type="number" step="0.1" placeholder="RR (mm)" style="width:90px">
-      <button class="btn btn-primary" onclick="addVehicleCheck('tyres')">+ Add</button>
-    </div>
-  </div>`;
+  // Tyre tread check section
+  if(hasTyres){
+    // Enhanced tyre check with actual tyre names
+    const posMap={};tyres.forEach(t=>{posMap[t.currentPosition]=t;});
+    const positions=['LF','RF','LR','RR'];
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🛞 Tyre Tread Check</div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="ck-tyre-date" type="date" value="${TODAY}" style="width:130px">
+        <input id="ck-tyre-odo" type="number" placeholder="Odometer" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:130px">
+      </div>`;
+    positions.forEach(pos=>{
+      const tyre=posMap[pos];
+      h+=`<div class="row" style="margin-bottom:4px;align-items:center">
+        <span style="width:30px;font-size:11px;font-weight:600">${pos}</span>
+        <span style="flex:1;font-size:10px;color:var(--t3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tyre?esc(tyre.brand+' '+(tyre.model||'')):'—'}</span>
+        <input id="ck-td-${pos.toLowerCase()}" type="number" step="0.1" placeholder="mm" style="width:70px">
+      </div>`;
+    });
+    h+=`<button class="btn btn-primary btn-sm" onclick="addTyreCheck()" style="margin-top:6px">+ Add Tread Check</button>
+    </div>`;
+  } else {
+    // Legacy simple tyre check
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🛞 Tyre Tread Check</div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="ck-lf" type="number" step="0.1" placeholder="LF (mm)" style="width:90px">
+        <input id="ck-rf" type="number" step="0.1" placeholder="RF (mm)" style="width:90px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="ck-lr" type="number" step="0.1" placeholder="LR (mm)" style="width:90px">
+        <input id="ck-rr" type="number" step="0.1" placeholder="RR (mm)" style="width:90px">
+        <button class="btn btn-primary" onclick="addVehicleCheck('tyres')">+ Add</button>
+      </div>
+    </div>`;
+  }
   // Tyre history
   if(tyreChecks.length){
     h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Tyre history (${tyreChecks.length})</div>`;
     tyreChecks.forEach(c=>{
       let d={};try{d=JSON.parse(c.data||'{}');}catch{}
       const tc=v2=>v2>=5?'var(--green)':v2>=3?'var(--orange)':'var(--red)';
-      h+=`<div class="log-row" style="grid-template-columns:80px 1fr auto">
-        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${c.date||''}</span>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:11px;font-family:'DM Mono',monospace">
-          <span style="color:${tc(d.lf)}">LF: ${d.lf||'?'}mm</span><span style="color:${tc(d.rf)}">RF: ${d.rf||'?'}mm</span>
-          <span style="color:${tc(d.lr)}">LR: ${d.lr||'?'}mm</span><span style="color:${tc(d.rr)}">RR: ${d.rr||'?'}mm</span>
-        </div>
-        <button class="btn-icon" onclick="delVehicleCheck('${c.id}')">🗑</button>
+      if(d.readings){
+        // New format with tyre IDs
+        h+=`<div class="log-row" style="grid-template-columns:80px 1fr auto">
+          <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${c.date||''}</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:11px;font-family:'DM Mono',monospace">
+            ${d.readings.map(r=>{const tyre=DB.vehicle_tyres.find(t=>String(t.id)===String(r.tyreId));return`<span style="color:${tc(r.depth)}">${r.pos}: ${r.depth}mm${tyre?' <span style="font-size:9px;color:var(--t3)">'+esc(tyre.brand)+'</span>':''}</span>`;}).join('')}
+          </div>
+          <button class="btn-icon" onclick="delVehicleCheck('${c.id}')">🗑</button>
+        </div>`;
+      } else {
+        // Legacy format
+        h+=`<div class="log-row" style="grid-template-columns:80px 1fr auto">
+          <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${c.date||''}</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:11px;font-family:'DM Mono',monospace">
+            <span style="color:${tc(d.lf)}">LF: ${d.lf||'?'}mm</span><span style="color:${tc(d.rf)}">RF: ${d.rf||'?'}mm</span>
+            <span style="color:${tc(d.lr)}">LR: ${d.lr||'?'}mm</span><span style="color:${tc(d.rr)}">RR: ${d.rr||'?'}mm</span>
+          </div>
+          <button class="btn-icon" onclick="delVehicleCheck('${c.id}')">🗑</button>
+        </div>`;
+      }
+    });
+    h+=`</div>`;
+  }
+  // Tyre rotation history
+  const rotations=getTyreRotations(curVeh);
+  if(rotations.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🔄 Rotation history (${rotations.length})</div>`;
+    rotations.slice(0,10).forEach(r=>{
+      let moves=[];try{moves=JSON.parse(r.moves||'[]');}catch{}
+      h+=`<div class="log-row" style="grid-template-columns:80px 1fr">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${r.date||''}</span>
+        <span style="font-size:11px;color:var(--t2)">${moves.map(m=>m.from+'→'+m.to).join(', ')}${r.odometer?' · '+Number(r.odometer).toLocaleString()+'km':''}</span>
       </div>`;
     });
     h+=`</div>`;
   }
   box.innerHTML=h;
+}
+// Enhanced tyre check function (links to tyre IDs)
+function addTyreCheck(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const date=g('ck-tyre-date')||TODAY;const odo=g('ck-tyre-odo');
+  const tyres=getVehicleTyres(curVeh);
+  const posMap={};tyres.forEach(t=>{posMap[t.currentPosition]=t;});
+  const positions=['LF','RF','LR','RR'];
+  const readings=[];
+  positions.forEach(pos=>{
+    const depth=+g('ck-td-'+pos.toLowerCase());
+    if(depth>0){
+      const tyre=posMap[pos];
+      readings.push({pos,depth,tyreId:tyre?tyre.id:null});
+    }
+  });
+  if(!readings.length){toast('Enter at least one tread depth');return;}
+  // Also save legacy format for backward compatibility
+  const legacyData={};readings.forEach(r=>{legacyData[r.pos.toLowerCase()]=r.depth;});
+  const data={...legacyData,readings};
+  const entry={id:uid(),vehicleId:String(curVeh),date,odometer:odo,checkType:'tyres',data:JSON.stringify(data),notes:'',createdAt:niso()};
+  DB.vehicle_checks.unshift(entry);apiPost('append','VehicleChecks',{row:entry});
+  renderVehicles();toast('Tyre tread check logged');
 }
 
 // --- Vehicle Todos Sub-tab ---
@@ -3697,6 +4233,140 @@ function renderVehicleTodosSub(box,v){
     });
     h+=`</div>`;
   }
+  box.innerHTML=h;
+}
+
+// --- Parts Sub-tab ---
+function renderPartsSub(box,v){
+  const parts=getVehicleParts(curVeh);
+  const editing=editingPartId?parts.find(p=>String(p.id)===String(editingPartId)):null;
+  const lowStock=parts.filter(p=>+p.qtyOnHand>0&&+p.qtyMin>0&&+p.qtyOnHand<=+p.qtyMin);
+  // Add/Edit form
+  const ep=editing||{};
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title">${editing?'Edit':'Add'} part${lowStock.length?` <span style="color:var(--red);font-size:11px">⚠ ${lowStock.length} low stock</span>`:''}</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="pt-num" placeholder="Part number" value="${esc(ep.partNumber||'')}" style="width:130px">
+      <input id="pt-desc" placeholder="Description" value="${esc(ep.description||'')}" style="flex:2">
+      <select id="pt-cat" style="width:130px">${Object.entries(PART_CATS).map(([k,v2])=>`<option value="${k}"${ep.category===k?' selected':''}>${v2}</option>`).join('')}</select>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="pt-brand" placeholder="Brand" value="${esc(ep.brand||'')}" style="flex:1">
+      <input id="pt-supplier" placeholder="Supplier" value="${esc(ep.supplier||'')}" style="flex:1">
+      <input id="pt-location" placeholder="Location" value="${esc(ep.location||'')}" style="flex:1">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="pt-qty" type="number" placeholder="Qty on hand" value="${ep.qtyOnHand||''}" style="width:100px">
+      <input id="pt-qtymin" type="number" placeholder="Min qty" value="${ep.qtyMin||''}" style="width:90px">
+      <input id="pt-price" type="number" step="0.01" placeholder="Unit price (R)" value="${ep.unitPrice||''}" style="width:120px">
+      <input id="pt-notes" placeholder="Notes" value="${esc(ep.notes||'')}" style="flex:1">
+    </div>
+    <div class="row">${editing?`<button class="btn btn-primary" onclick="updatePart()">Save</button><button class="btn" onclick="cancelEditPart()">Cancel</button>`:`<button class="btn btn-primary" onclick="addPart()">+ Add Part</button>`}
+    </div>
+  </div>`;
+  // Category filter
+  h+=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
+    <button class="btn btn-sm${partCatFilter==='all'?' active':''}" onclick="setPartCatFilter('all')" style="${partCatFilter==='all'?'background:var(--gold);color:#000':''}">All (${parts.length})</button>
+    ${Object.entries(PART_CATS).map(([k,v2])=>{const cnt=parts.filter(p=>p.category===k).length;return cnt?`<button class="btn btn-sm${partCatFilter===k?' active':''}" onclick="setPartCatFilter('${k}')" style="${partCatFilter===k?'background:var(--gold);color:#000':''}">${v2} (${cnt})</button>`:''}).join('')}
+  </div>`;
+  // Parts list
+  const filtered=partCatFilter==='all'?parts:parts.filter(p=>p.category===partCatFilter);
+  if(!filtered.length){h+=`<div class="empty"><div class="empty-icon">🔩</div>No parts${partCatFilter!=='all'?' in this category':''}</div>`;}
+  else{
+    h+=`<div class="card">`;
+    filtered.forEach(p=>{
+      const qty=+p.qtyOnHand||0;const qtyMin=+p.qtyMin||0;
+      const isLow=qtyMin>0&&qty<=qtyMin;
+      const qtyColor=isLow?'var(--red)':qty>0?'var(--green)':'var(--t3)';
+      h+=`<div class="log-row" style="grid-template-columns:1fr auto">
+        <div style="min-width:0">
+          ${p.partNumber?`<span style="font-size:11px;color:var(--blue);font-family:'DM Mono',monospace">${esc(p.partNumber)}</span> `:''}
+          <span style="color:var(--t2)">${esc(p.description)}</span>
+          ${p.brand?`<span style="font-size:10px;color:var(--t3);margin-left:6px">${esc(p.brand)}</span>`:''}
+          <div style="font-size:10px;color:var(--t3);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
+            <span style="color:${qtyColor};font-weight:600">Qty: ${qty}${isLow?' ⚠ LOW':''}</span>
+            ${p.unitPrice&&+p.unitPrice?`<span>${formatR(p.unitPrice)}</span>`:''}
+            ${p.location?`<span>📍 ${esc(p.location)}</span>`:''}
+            ${p.supplier?`<span>🏪 ${esc(p.supplier)}</span>`:''}
+          </div>
+          ${p.notes?`<div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(p.notes)}</div>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:2px">
+          ${qty>0?`<button class="btn-icon" onclick="usePart('${p.id}')" title="Use 1">📤</button>`:''}
+          <button class="btn-icon" onclick="editPart('${p.id}')">✏️</button>
+          <button class="btn-icon" onclick="delPart('${p.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  box.innerHTML=h;
+}
+
+// --- Trips Sub-tab ---
+function renderTripsSub(box,v){
+  const trips=getTripLog(curVeh);
+  // Monthly summary
+  const months={};trips.forEach(t=>{const m=(t.date||'').slice(0,7);if(!months[m])months[m]={business:0,personal:0,mixed:0};months[m][t.tripType||'personal']+=(+t.distance||0);});
+  const sortedMonths=Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
+  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log trip <button class="btn btn-sm" onclick="exportTrips('${curVeh}')" title="Export trips CSV for SARS">📥 Export CSV</button></div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="tr-date" type="date" value="${TODAY}" style="width:130px">
+      <input id="tr-start" type="number" placeholder="Start ODO" style="width:120px" value="${v.currentOdo?Number(v.currentOdo):''}">
+      <input id="tr-end" type="number" placeholder="End ODO" style="width:120px">
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <select id="tr-type" style="width:110px">
+        <option value="business">💼 Business</option>
+        <option value="personal" selected>🏠 Personal</option>
+        <option value="mixed">🔄 Mixed</option>
+      </select>
+      <input id="tr-purpose" placeholder="Purpose / client" style="flex:1">
+      <input id="tr-route" placeholder="Route (e.g. PTA→JHB)" style="flex:1">
+    </div>
+    <div class="row">
+      <input id="tr-notes" placeholder="Notes" style="flex:1">
+      <button class="btn btn-primary" onclick="addTrip()">+ Add</button>
+    </div>
+  </div>`;
+  // Monthly summary card
+  if(sortedMonths.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Monthly summary</div>`;
+    sortedMonths.forEach(([m,d])=>{
+      const total=d.business+d.personal+d.mixed;
+      const bizPct=total?Math.round(d.business/total*100):0;
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--b);font-size:12px">
+        <span style="font-family:'DM Mono',monospace;color:var(--t3);width:70px">${m}</span>
+        <div style="flex:1;display:flex;gap:8px">
+          ${d.business?`<span style="color:var(--blue)">💼 ${d.business.toLocaleString()} km</span>`:''}
+          ${d.personal?`<span style="color:var(--green)">🏠 ${d.personal.toLocaleString()} km</span>`:''}
+          ${d.mixed?`<span style="color:var(--orange)">🔄 ${d.mixed.toLocaleString()} km</span>`:''}
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:11px">${total.toLocaleString()} km <span style="color:var(--blue)">${bizPct}% biz</span></span>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  // Trip list
+  h+=`<div class="card"><div class="card-title">Trip history (${trips.length})</div>`;
+  if(!trips.length){h+=`<div class="empty"><div class="empty-icon">📍</div>No trips logged yet</div>`;}
+  else{
+    const TYPE_COLORS={business:'var(--blue)',personal:'var(--green)',mixed:'var(--orange)'};
+    const TYPE_ICONS={business:'💼',personal:'🏠',mixed:'🔄'};
+    trips.slice(0,50).forEach(t=>{
+      h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${t.date||''}</span>
+        <span class="tag" style="background:${TYPE_COLORS[t.tripType]||'var(--t3)'}22;color:${TYPE_COLORS[t.tripType]||'var(--t3)'};font-size:10px">${TYPE_ICONS[t.tripType]||''} ${t.tripType||'personal'}</span>
+        <div style="min-width:0">
+          <span style="font-family:'DM Mono',monospace;color:var(--t2)">${(+t.distance||0).toLocaleString()} km</span>
+          <span style="font-size:10px;color:var(--t3);margin-left:6px">${t.startOdo}→${t.endOdo}</span>
+          ${t.purpose?`<span style="font-size:11px;color:var(--t2);margin-left:6px">${esc(t.purpose)}</span>`:''}
+          ${t.route?`<span style="font-size:10px;color:var(--t3);margin-left:4px">(${esc(t.route)})</span>`:''}
+        </div>
+        <button class="btn-icon" onclick="delTrip('${t.id}')">🗑</button>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
   box.innerHTML=h;
 }
 
@@ -4062,7 +4732,7 @@ function saveSettings(){
   CFG.theme=themeRadio?themeRadio.value:'auto';
   LS.set('los_cfg',CFG);applyTheme();closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
-function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders','vehicleexpenses','vehiclecomparisons','vehiclechecks','vehicletodos'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
+function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[],vehicle_parts:[],vehicle_tyres:[],tyre_rotations:[],modifications:[],incidents:[],trip_log:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders','vehicleexpenses','vehiclecomparisons','vehiclechecks','vehicletodos','vehicleparts','vehicletyres','tyrerotations','modifications','incidents','triplog'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
 
 // ═══ INIT ═══
 async function initApp(){
@@ -4088,7 +4758,7 @@ async function initApp(){
   checkBackendHealth();
 }
 
-const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock'];
+const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
 async function checkBackendHealth(){
   if(!CFG.apiUrl)return;
   try{
