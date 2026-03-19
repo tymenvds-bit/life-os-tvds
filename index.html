@@ -2515,6 +2515,7 @@ function getVehicleChecklist(vid){
 function openServiceDay(vid){
   const v=getVehicle(vid);if(!v)return;
   const checklist=getVehicleChecklist(vid);
+  const openTodos=getVehicleTodos(vid).filter(t=>t.isDone!=='1'&&t.category==='maintenance');
   const modal=document.getElementById('veh-modal');const body=document.getElementById('veh-modal-body');
   let h=`<div style="max-height:80vh;overflow-y:auto;padding:12px">
     <h3 style="margin:0 0 8px">🔧 Service Day — ${esc(v.name)}</h3>
@@ -2524,6 +2525,20 @@ function openServiceDay(vid){
       <div><label style="font-size:10px;color:var(--t3)">Total Cost (R)</label><br><input id="sd-cost" type="number" placeholder="0" style="width:110px"></div>
       <div><label style="font-size:10px;color:var(--t3)">Provider</label><br><input id="sd-provider" placeholder="Workshop" style="width:150px"></div>
     </div>`;
+  // Show open maintenance todos from previous services
+  if(openTodos.length){
+    h+=`<div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:6px;border-left:3px solid var(--orange)">
+      <div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:4px">🔔 From previous services (${openTodos.length})</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Tick items you're addressing today — they'll be marked done</div>`;
+    openTodos.forEach(t=>{
+      h+=`<div style="display:flex;gap:6px;align-items:center;padding:2px 0">
+        <input type="checkbox" id="sd-todo-${t.id}" style="cursor:pointer">
+        <label for="sd-todo-${t.id}" style="font-size:12px;cursor:pointer">${esc(t.description)}${t.partNumber?` <span style="color:var(--blue);font-size:10px">🔩 ${esc(t.partNumber)}</span>`:''}</label>
+        ${t.notes?`<span style="font-size:10px;color:var(--t3)">(${esc(t.notes)})</span>`:''}
+      </div>`;
+    });
+    h+=`</div>`;
+  }
   checklist.forEach((sec,si)=>{
     h+=`<div style="margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--gold);margin-bottom:4px;border-bottom:1px solid var(--bg3);padding-bottom:2px">${esc(sec.section)}</div>`;
     sec.items.forEach((item,ii)=>{
@@ -2531,7 +2546,10 @@ function openServiceDay(vid){
         <input type="checkbox" id="sd-${si}-${ii}" ${item.default?'checked':''} style="margin-top:3px;cursor:pointer">
         <div style="flex:1;min-width:0">
           <label for="sd-${si}-${ii}" style="font-size:12px;cursor:pointer"><b>${esc(item.name)}</b> <span style="color:var(--t3);font-size:11px">— ${esc(item.desc)}</span></label>
-          <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="font-size:10px;width:100%;margin-top:2px;padding:2px 6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:3px">
+          <div style="display:flex;gap:4px;margin-top:2px;align-items:center">
+            <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="font-size:10px;flex:1;padding:2px 6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:3px">
+            <label style="font-size:9px;color:var(--t3);white-space:nowrap;cursor:pointer"><input type="checkbox" id="sd-followup-${si}-${ii}" style="margin-right:2px">→ Todo</label>
+          </div>
         </div>
       </div>`;
     });
@@ -2581,8 +2599,33 @@ function saveServiceDay(vid){
         completeReminder(r.id);advanced++;}
     });
   });
+  // Mark ticked previous todos as done
+  let todosDone=0;
+  const openTodos=getVehicleTodos(vid).filter(t=>t.isDone!=='1'&&t.category==='maintenance');
+  openTodos.forEach(t=>{
+    if(document.getElementById(`sd-todo-${t.id}`)?.checked){
+      toggleVehicleTodo(t.id);todosDone++;
+    }
+  });
+  // Create new todos from notes with "→ Todo" checked
+  let todosCreated=0;
+  checklist.forEach((sec,si)=>{
+    sec.items.forEach((item,ii)=>{
+      const followUp=document.getElementById(`sd-followup-${si}-${ii}`)?.checked;
+      const note=document.getElementById(`sd-note-${si}-${ii}`)?.value?.trim();
+      if(followUp&&note){
+        const todo={id:uid(),vehicleId:String(vid),category:'maintenance',description:`${item.name}: ${note}`,partNumber:'',isDone:'0',completedDate:'',notes:`From service ${date}`,sortOrder:'0',createdAt:niso()};
+        DB.vehicle_todos.push(todo);apiPost('append','VehicleTodos',{row:todo});
+        todosCreated++;
+      }
+    });
+  });
   closeModal();renderVehicles();
-  toast(`✅ Service logged: ${completed.length} items${advanced?' · '+advanced+' reminders advanced':''}`);
+  let msg=`✅ Service logged: ${completed.length} items`;
+  if(advanced) msg+=` · ${advanced} reminders advanced`;
+  if(todosDone) msg+=` · ${todosDone} todos done`;
+  if(todosCreated) msg+=` · ${todosCreated} follow-up todos created`;
+  toast(msg);
 }
 
 function editServiceChecklist(vid){
