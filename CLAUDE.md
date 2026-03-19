@@ -46,6 +46,33 @@ Personal life operating system for Tijmen van der Schyff.
 - Test changes by opening `index.html` directly in a browser or via GitHub Pages.
 - **After every significant change:** update this file (CLAUDE.md) to reflect new modules, functions, API actions, or architecture changes. This file must always match the current state of the codebase.
 
+## Deployment & Persistence Checklist
+
+**CRITICAL: Every change that adds/modifies Google Sheets schemas requires ALL THREE steps:**
+
+1. **Push to GitHub** → `git add . && git commit && git push` → GitHub Actions deploys frontend
+2. **Redeploy `api.gs`** → Google Sheet → Extensions → Apps Script → Deploy → Manage deployments → Edit → **New version** → Deploy
+3. **Hard refresh** → `Ctrl+Shift+R` (PC) / `Cmd+Shift+R` (Mac)
+
+**If step 2 is skipped:** Data saves to localStorage but NOT to Google Sheets. On next hard refresh, Sheets returns stale/empty data and overwrites localStorage → data loss.
+
+**Persistence test after every deploy:**
+1. Add a test item (expense, fuel log, todo, etc.)
+2. Hard refresh the page
+3. ✅ Item should still be there
+4. Check browser console for `✅ apiPost` or `⚠️ Sync failed` messages
+5. Check Google Sheets directly to confirm the row exists
+
+**When schemas change (new columns, new sheets):**
+- The Apps Script `getOrCreateSheet()` auto-creates new sheet tabs with headers
+- But ONLY if the deployed version has the updated SCHEMAS object
+- Old deployments will silently ignore new columns/sheets
+
+**Common symptoms of stale api.gs deployment:**
+- Data appears after adding but disappears on refresh
+- No error toasts (the POST succeeds but writes to wrong/missing columns)
+- Console shows `✅ apiPost` but Sheets doesn't have the data
+
 ## Key Functions
 
 - `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
