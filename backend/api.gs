@@ -25,7 +25,7 @@ const SCHEMAS = {
   FuelLogs:      ['id','vehicleId','date','odometer','litres','totalCost','pricePerL','kmPerL','costPerKm','distanceKm','fuelType','station','cityPct','isFullTank','isMissed','paymentMethod','notes','createdAt'],
   ServiceLogs:   ['id','vehicleId','date','odometer','totalCost','description','serviceType','provider','parts','notes','createdAt'],
   ServiceReminders: ['id','vehicleId','name','intervalKm','intervalMonths','lastServiceDate','lastServiceOdo','nextDueDate','nextDueOdo','isActive','createdAt'],
-  VehicleExpenses: ['id','vehicleId','date','category','description','amount','frequency','supplier','notes','createdAt'],
+  VehicleExpenses: ['id','vehicleId','date','category','description','amount','frequency','endDate','supplier','notes','createdAt'],
   VehicleComparisons: ['id','vehicleId','comparisonName','targetVehicle','purchasePrice','financeRate','financeTerm','expectedKmPerL','expectedMaintenancePerKm','insuranceAnnual','licenceAnnual','projectedKmPerYear','assumptions','results','lastRunDate','createdAt'],
   VehicleChecks: ['id','vehicleId','date','odometer','checkType','data','notes','createdAt'],
   VehicleTodos: ['id','vehicleId','category','description','partNumber','isDone','completedDate','notes','sortOrder','createdAt'],
