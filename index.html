@@ -2013,26 +2013,32 @@ function delExpense(id){
 // Returns {totalActual, annualProjected}
 function calcRecurringCosts(vid){
   const exps=getVehicleExpenses(vid);
+  const now=new Date(TODAY);
   let totalActual=0,annualProjected=0;
   exps.forEach(e=>{
     const amt=+e.amount||0;if(!amt)return;
     const freq=e.frequency||'once';
     if(freq==='once'){totalActual+=amt;return;}
     const start=new Date(e.date||e.createdAt||TODAY);
-    const end=e.endDate?new Date(e.endDate):new Date(TODAY);
     if(isNaN(start.getTime()))return;
-    // Count periods between start and end
+    // Don't count future-dated entries as spent
+    if(start>now)return;
+    // End is earlier of: endDate or today
+    const declaredEnd=e.endDate?new Date(e.endDate):null;
+    const end=declaredEnd&&declaredEnd<now?declaredEnd:now;
     let periods=0;
     if(freq==='monthly'){
       periods=Math.max(1,(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1);
-      if(!e.endDate) annualProjected+=amt*12; // still active
+      if(!e.endDate||declaredEnd>now) annualProjected+=amt*12; // still active or future end
     }else if(freq==='quarterly'){
       const months=(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1;
       periods=Math.max(1,Math.ceil(months/3));
-      if(!e.endDate) annualProjected+=amt*4;
+      if(!e.endDate||declaredEnd>now) annualProjected+=amt*4;
     }else if(freq==='annual'){
-      periods=Math.max(1,end.getFullYear()-start.getFullYear()+1);
-      if(!e.endDate) annualProjected+=amt;
+      const msElapsed=end.getTime()-start.getTime();
+      const yearsElapsed=msElapsed/(1000*60*60*24*365.25);
+      periods=Math.max(1,Math.round(yearsElapsed)||1);
+      if(!e.endDate||declaredEnd>now) annualProjected+=amt;
     }
     totalActual+=amt*periods;
   });
@@ -2356,17 +2362,34 @@ function calcVehicleStats(vid){
   const totalFuelCost=fuel.reduce((s,f)=>s+(+f.totalCost||0),0);
   const totalServiceCost=services.reduce((s,s2)=>s+(+s2.totalCost||0),0);
   // Expense categories — recurring expenses expand to actual period count
+  // Only counts periods up to TODAY (not future), and uses correct period math
   const expByCat=(cat)=>{
+    const now=new Date(TODAY);
     return expenses.filter(e=>e.category===cat).reduce((s,e)=>{
       const amt=+e.amount||0;const freq=e.frequency||'once';
       if(freq==='once')return s+amt;
       const start=new Date(e.date||e.createdAt||TODAY);
-      const end=e.endDate?new Date(e.endDate):new Date(TODAY);
       if(isNaN(start.getTime()))return s+amt;
+      // Don't count anything that hasn't started yet
+      if(start>now)return s;
+      // End is the earlier of: endDate, or today (don't count future periods as spent)
+      const declaredEnd=e.endDate?new Date(e.endDate):null;
+      const end=declaredEnd&&declaredEnd<now?declaredEnd:now;
       let periods=1;
-      if(freq==='monthly')periods=Math.max(1,(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1);
-      else if(freq==='quarterly'){const m=(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1;periods=Math.max(1,Math.ceil(m/3));}
-      else if(freq==='annual')periods=Math.max(1,end.getFullYear()-start.getFullYear()+1);
+      if(freq==='monthly'){
+        periods=Math.max(1,(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1);
+      } else if(freq==='quarterly'){
+        const m=(end.getFullYear()-start.getFullYear())*12+(end.getMonth()-start.getMonth())+1;
+        periods=Math.max(1,Math.ceil(m/3));
+      } else if(freq==='annual'){
+        // Count how many annual payments have occurred
+        // start 2025-03-03, today 2026-03-19 → 1 full year passed → 1 payment made (the initial one)
+        // start 2024-04-29, end 2025-03-31 → <1 year → 1 payment
+        // start 2024-04-19, today 2026-03-19 → ~2 years → 2 payments
+        const msElapsed=end.getTime()-start.getTime();
+        const yearsElapsed=msElapsed/(1000*60*60*24*365.25);
+        periods=Math.max(1,Math.round(yearsElapsed)||1);
+      }
       return s+amt*periods;
     },0);
   };
@@ -2665,7 +2688,8 @@ function renderCostsSub(box,v){
   </div>`;
   // Recurring costs summary — only ACTIVE (no endDate, or endDate in future)
   const allRecurring=expenses.filter(e=>e.frequency&&e.frequency!=='once');
-  const activeRecurring=allRecurring.filter(e=>!e.endDate||e.endDate>=TODAY);
+  const activeRecurring=allRecurring.filter(e=>(!e.endDate||e.endDate>=TODAY)&&(!e.date||e.date<=TODAY));
+  const futureRecurring=allRecurring.filter(e=>e.date&&e.date>TODAY);
   const expiredRecurring=allRecurring.filter(e=>e.endDate&&e.endDate<TODAY);
   if(allRecurring.length){
     const monthlyTotal=activeRecurring.reduce((s,e)=>{const a=+e.amount||0;if(e.frequency==='monthly')return s+a;if(e.frequency==='quarterly')return s+a/3;if(e.frequency==='annual')return s+a/12;return s;},0);
@@ -2688,6 +2712,17 @@ function renderCostsSub(box,v){
         <span style="font-family:'DM Mono',monospace;color:var(--t2)">${formatR(e.amount)}/${e.frequency==='monthly'?'mo':e.frequency==='quarterly'?'qtr':'yr'} <span style="color:var(--t3)">(${formatR(monthly)}/mo)</span></span>
       </div>`;
     });
+    // Upcoming recurring (not yet started)
+    if(futureRecurring.length){
+      h+=`<div style="margin-top:6px;padding-top:4px;border-top:1px dashed var(--bg3)"><span style="font-size:10px;color:var(--blue)">📅 Upcoming (${futureRecurring.length})</span></div>`;
+      futureRecurring.forEach(e=>{
+        const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category};
+        h+=`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;opacity:0.6">
+          <span>${cat.emoji} ${esc(e.description||cat.label)} <span style="font-size:10px;color:var(--blue)">starts ${e.date}</span></span>
+          <span style="font-family:'DM Mono',monospace">${formatR(e.amount)}/${e.frequency==='monthly'?'mo':e.frequency==='quarterly'?'qtr':'yr'}</span>
+        </div>`;
+      });
+    }
     // Expired recurring (greyed out)
     if(expiredRecurring.length){
       h+=`<div style="margin-top:6px;padding-top:4px;border-top:1px dashed var(--bg3)"><span style="font-size:10px;color:var(--t3)">Expired (${expiredRecurring.length})</span></div>`;
