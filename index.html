@@ -2512,14 +2512,24 @@ function getVehicleChecklist(vid){
   return v.fuelType==='diesel'?JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_DIESEL)):JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_PETROL));
 }
 
+function sdUpdateTotal(){
+  let sum=0;
+  document.querySelectorAll('.sd-item-cost').forEach(el=>{sum+=(+el.value||0);});
+  const totalEl=document.getElementById('sd-total');
+  const overrideEl=document.getElementById('sd-cost');
+  if(totalEl) totalEl.textContent='R'+sum.toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(overrideEl&&!overrideEl.dataset.manual) overrideEl.value=sum||'';
+}
+
 function openServiceDay(vid){
   const v=getVehicle(vid);if(!v)return;
   const checklist=getVehicleChecklist(vid);
   const openTodos=getVehicleTodos(vid).filter(t=>t.isDone!=='1'&&t.category==='maintenance');
   const modal=document.getElementById('veh-modal');const body=document.getElementById('veh-modal-body');
-  // Full-screen mobile-first layout
-  body.style.cssText='width:100%;max-width:560px;max-height:95vh;margin:auto;border-radius:12px;overflow:hidden;display:flex;flex-direction:column';
-  // Header (sticky)
+  body.style.cssText='width:100%;max-width:600px;max-height:95vh;margin:auto;border-radius:12px;overflow:hidden;display:flex;flex-direction:column';
+  const I='style="width:100%;padding:10px;font-size:14px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)"';
+  const L='style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px"';
+  // Header
   let h=`<div style="padding:14px 16px;border-bottom:1px solid var(--bg3);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg)">
     <div><div style="font-size:16px;font-weight:700">🔧 Service Day</div><div style="font-size:12px;color:var(--t3)">${esc(v.name)}</div></div>
     <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3);padding:4px">✕</button>
@@ -2527,10 +2537,10 @@ function openServiceDay(vid){
   <div style="overflow-y:auto;flex:1;padding:16px;-webkit-overflow-scrolling:touch">
     <!-- Service info -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Date</div><input id="sd-date" type="date" value="${TODAY}" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)"></div>
-      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Odometer</div><input id="sd-odo" type="number" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" inputmode="numeric"></div>
-      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Total Cost (R)</div><input id="sd-cost" type="number" placeholder="0" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" inputmode="decimal"></div>
-      <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Provider</div><input id="sd-provider" placeholder="Workshop" style="width:100%;padding:10px;font-size:15px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)"></div>
+      <div><div ${L}>Date</div><input id="sd-date" type="date" value="${TODAY}" ${I}></div>
+      <div><div ${L}>Odometer</div><input id="sd-odo" type="number" value="${v.currentOdo?Number(v.currentOdo):''}" ${I} inputmode="numeric"></div>
+      <div><div ${L}>Provider</div><input id="sd-provider" placeholder="Self / Workshop name" ${I}></div>
+      <div><div ${L}>Time spent</div><input id="sd-time" type="text" placeholder="e.g. 2h 30m" ${I}></div>
     </div>`;
   // Previous service todos
   if(openTodos.length){
@@ -2539,23 +2549,27 @@ function openServiceDay(vid){
     openTodos.forEach(t=>{
       h+=`<label style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05)">
         <input type="checkbox" id="sd-todo-${t.id}" style="width:20px;height:20px;flex-shrink:0;margin-top:1px">
-        <div><div style="font-size:14px">${esc(t.description)}</div>${t.partNumber?`<div style="font-size:11px;color:var(--blue)">🔩 ${esc(t.partNumber)}</div>`:''}${t.notes?`<div style="font-size:11px;color:var(--t3)">${esc(t.notes)}</div>`:''}</div>
+        <div style="flex:1"><div style="font-size:14px">${esc(t.description)}</div>${t.partNumber?`<div style="font-size:11px;color:var(--blue)">🔩 ${esc(t.partNumber)}</div>`:''}${t.notes?`<div style="font-size:11px;color:var(--t3)">${esc(t.notes)}</div>`:''}</div>
       </label>`;
     });
     h+=`</div>`;
   }
-  // Checklist sections
+  // Checklist sections — NO pre-checked items, with per-item cost
   checklist.forEach((sec,si)=>{
     h+=`<div style="margin-bottom:16px">
       <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--gold)">${esc(sec.section)}</div>`;
     sec.items.forEach((item,ii)=>{
       h+=`<div style="padding:10px 0;border-bottom:1px solid var(--bg3)">
         <label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer">
-          <input type="checkbox" id="sd-${si}-${ii}" ${item.default?'checked':''} style="width:20px;height:20px;flex-shrink:0;margin-top:2px">
+          <input type="checkbox" id="sd-${si}-${ii}" style="width:20px;height:20px;flex-shrink:0;margin-top:2px">
           <div style="flex:1"><div style="font-size:15px;font-weight:500">${esc(item.name)}</div><div style="font-size:12px;color:var(--t3);margin-top:2px">${esc(item.desc)}</div></div>
         </label>
-        <div style="display:flex;gap:6px;margin-top:6px;margin-left:32px;align-items:center">
-          <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:8px">
+        <div style="display:flex;gap:6px;margin-top:6px;margin-left:32px;align-items:center;flex-wrap:wrap">
+          <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="flex:2;min-width:120px;font-size:13px;padding:8px 10px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:8px">
+          <div style="display:flex;align-items:center;gap:2px;border:1px solid var(--bg3);border-radius:8px;background:var(--bg2);padding:0 8px">
+            <span style="font-size:12px;color:var(--t3)">R</span>
+            <input class="sd-item-cost" id="sd-cost-${si}-${ii}" type="number" placeholder="0" oninput="sdUpdateTotal()" style="width:70px;font-size:13px;padding:8px 4px;border:none;background:transparent;color:var(--t)" inputmode="decimal">
+          </div>
           <label style="font-size:11px;color:var(--t3);white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid var(--bg3);border-radius:6px;background:var(--bg2)">
             <input type="checkbox" id="sd-followup-${si}-${ii}" style="width:14px;height:14px">→ Todo
           </label>
@@ -2564,15 +2578,28 @@ function openServiceDay(vid){
     });
     h+=`</div>`;
   });
-  h+=`<div style="margin-bottom:12px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Additional notes</div>
-    <textarea id="sd-notes" rows="2" style="width:100%;padding:10px;font-size:13px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" placeholder="General service notes..."></textarea></div>
+  // Additional notes + invoice scan
+  h+=`<div style="margin-bottom:12px"><div ${L}>Additional notes / invoice dump</div>
+    <textarea id="sd-notes" rows="3" style="width:100%;padding:10px;font-size:13px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)" placeholder="Paste invoice text, general notes, parts bought..."></textarea></div>
   </div>
-  <!-- Footer (sticky) -->
-  <div style="padding:12px 16px;border-top:1px solid var(--bg3);display:flex;gap:8px;justify-content:space-between;flex-shrink:0;background:var(--bg);flex-wrap:wrap">
-    <button class="btn btn-sm" onclick="editServiceChecklist('${vid}')" style="padding:8px 12px">✏️ Edit template</button>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-sm" onclick="closeModal()" style="padding:8px 16px">Cancel</button>
-      <button class="btn btn-primary" onclick="saveServiceDay('${vid}')" style="padding:10px 20px;font-size:15px">✅ Complete</button>
+  <!-- Footer (sticky) — running total + override + buttons -->
+  <div style="padding:12px 16px;border-top:1px solid var(--bg3);flex-shrink:0;background:var(--bg)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:12px;color:var(--t3)">Item total: <span id="sd-total" style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:600">R0.00</span></div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:11px;color:var(--t3)">Override total:</span>
+        <div style="display:flex;align-items:center;border:1px solid var(--bg3);border-radius:8px;background:var(--bg2);padding:0 8px">
+          <span style="font-size:13px;color:var(--t3)">R</span>
+          <input id="sd-cost" type="number" placeholder="auto" oninput="this.dataset.manual=this.value?'1':''" style="width:80px;font-size:14px;padding:8px 4px;border:none;background:transparent;color:var(--t);font-weight:600" inputmode="decimal">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="editServiceChecklist('${vid}')" style="padding:8px 12px">✏️ Edit checklist</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="closeModal()" style="padding:8px 16px">Cancel</button>
+        <button class="btn btn-primary" onclick="saveServiceDay('${vid}')" style="padding:10px 20px;font-size:15px">✅ Complete</button>
+      </div>
     </div>
   </div>`;
   body.innerHTML=h;modal.style.display='flex';
@@ -2583,7 +2610,12 @@ function saveServiceDay(vid){
   const checklist=getVehicleChecklist(vid);
   const date=document.getElementById('sd-date')?.value||TODAY;
   const odo=document.getElementById('sd-odo')?.value||'';
-  const cost=document.getElementById('sd-cost')?.value||'0';
+  const timeSpent=document.getElementById('sd-time')?.value||'';
+  // Total cost: use override if set, otherwise sum of item costs
+  const overrideEl=document.getElementById('sd-cost');
+  let totalCost=0;
+  if(overrideEl?.dataset.manual&&overrideEl.value){totalCost=+overrideEl.value;}
+  else{document.querySelectorAll('.sd-item-cost').forEach(el=>{totalCost+=(+el.value||0);});}
   const provider=document.getElementById('sd-provider')?.value||'';
   const notes=document.getElementById('sd-notes')?.value||'';
   const completed=[];const names=[];
@@ -2591,15 +2623,17 @@ function saveServiceDay(vid){
     sec.items.forEach((item,ii)=>{
       if(document.getElementById(`sd-${si}-${ii}`)?.checked){
         const note=document.getElementById(`sd-note-${si}-${ii}`)?.value||'';
-        completed.push({name:item.name,note,section:sec.section});
+        const itemCost=+(document.getElementById(`sd-cost-${si}-${ii}`)?.value||0);
+        completed.push({name:item.name,note,section:sec.section,cost:itemCost});
         names.push(item.name);
       }
     });
   });
   if(!completed.length){toast('Check at least one item');return;}
-  const entry={id:uid(),vehicleId:String(vid),date,odometer:odo,totalCost:cost,
-    description:'Service: '+names.slice(0,5).join(', ')+(names.length>5?' +'+( names.length-5)+' more':''),
-    serviceType:'routine',provider,parts:JSON.stringify(completed),notes,createdAt:niso()};
+  const fullNotes=[notes,timeSpent?'Time: '+timeSpent:''].filter(Boolean).join(' | ');
+  const entry={id:uid(),vehicleId:String(vid),date,odometer:odo,totalCost:String(totalCost),
+    description:'Service: '+names.slice(0,5).join(', ')+(names.length>5?' +'+(names.length-5)+' more':''),
+    serviceType:'routine',provider,parts:JSON.stringify(completed),notes:fullNotes,createdAt:niso()};
   DB.service_logs.push(entry);apiPost('append','ServiceLogs',{row:entry});
   if(odo&&+odo>+(v.currentOdo||0)){v.currentOdo=odo;apiPost('update','Vehicles',{id:String(v.id),patch:{currentOdo:odo}});}
   // Auto-advance matching reminders
