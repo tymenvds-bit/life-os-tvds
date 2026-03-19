@@ -294,6 +294,7 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
       <div class="stat-pill"><span class="stat-val" style="color:var(--red)" id="s-urgent">0</span><span class="stat-lbl">Urgent</span></div>
       <div class="stat-pill"><span class="stat-val" style="color:var(--gold)" id="s-tasks">0</span><span class="stat-lbl">Tasks</span></div>
       <div class="stat-pill"><span class="stat-val" style="color:var(--blue)" id="s-hrs">0h</span><span class="stat-lbl">Today</span></div>
+      <button class="btn btn-sm" onclick="openHelp()" style="font-size:11px" title="Help & guides">?</button>
       <button class="btn btn-sm" onclick="openSettings()" style="font-size:11px">⚙</button>
     </div>
   </div>
@@ -564,6 +565,9 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
 <!-- VEHICLE MODAL -->
 <div id="veh-modal" style="display:none" class="modal-overlay">
   <div class="modal" id="veh-modal-body"></div>
+</div>
+<div id="help-modal" style="display:none" class="modal-overlay">
+  <div class="modal" id="help-modal-body" style="max-width:600px;max-height:90vh;overflow-y:auto"></div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -3947,6 +3951,100 @@ function completeSetup(){
   LS.set('los_cfg',CFG);initApp();
 }
 function skipSetup(){CFG={apiUrl:'',apiKey:'',mode:'local'};LS.set('los_cfg',CFG);initApp();}
+// ═══ HELP SYSTEM ═══
+const HELP={
+  dashboard:{title:'📊 Dashboard',sections:[
+    {h:'Your Command Centre',p:'The dashboard shows everything you need at a glance. It uses a 3-column grid layout on wide screens.'},
+    {h:"Today's Board",p:"Click <b>AI Pick</b> to get 3–5 AI-suggested focus tasks. Pin tasks with 📌 or remove with ✕. Tick the checkbox to mark done. Items pinned today that aren't completed become overdue tomorrow."},
+    {h:'Schedule Today',p:'Shows your Google Calendar events for today. Click <b>View all →</b> to go to the Calendar tab.'},
+    {h:'Priority Tasks',p:'Your highest priority open tasks across all categories. Click the 📌 pin to add any to your board.'},
+    {h:'Overdue',p:'Tasks past their due date. Click the checkbox to mark done, or 📌 to add to your board for today.'},
+    {h:'Vehicle Services Due',p:'Shows red/amber service reminders across ALL your vehicles. Click <b>Vehicles →</b> to manage.'},
+    {h:'Time Today',p:'Shows hours logged today vs your 8h target with a progress bar and category breakdown.'},
+  ]},
+  capture:{title:'⚡ Capture',sections:[
+    {h:'Universal Capture',p:'Type or paste anything — tasks, notes, time entries, fuel logs, journal thoughts. AI parses it into the right categories.'},
+    {h:'Modes',p:'<b>Standard</b> — general capture. <b>EOD</b> — end of day review. <b>WhatsApp</b> — paste WhatsApp messages. <b>Fuel</b> — fuel log with vehicle selection.'},
+    {h:'📷 Scan Slip',p:'Take a photo of a receipt. Claude Vision OCR extracts the data automatically.'},
+    {h:'Email Briefing',p:'Fetches your unread emails and creates an AI summary with suggested tasks.'},
+    {h:'Quick Add Task',p:'Fast task entry without AI processing — just title, category, priority, due date.'},
+    {h:'Workflow',p:'1. Type/paste text → 2. Click Process → 3. Review the preview → 4. Edit if needed → 5. Save All'},
+  ]},
+  todos:{title:'✅ Tasks',sections:[
+    {h:'Task Management',p:'All your tasks in one place. Filter by category, priority, status, or use the search bar.'},
+    {h:'Statuses',p:'<b>Open</b> → <b>In Progress</b> → <b>Done</b>. Click the status badge to cycle. <b>Waiting</b> = blocked on someone else.'},
+    {h:'Priorities',p:'<b>Urgent</b> (red) → <b>High</b> → <b>Normal</b> → <b>Low</b>. Urgent tasks show on the dashboard.'},
+    {h:'AI: What should I do next?',p:'AI considers your deadlines, priorities, time of day, and energy to recommend one task.'},
+    {h:'Stale Tasks',p:'Tasks untouched for 14+ days get flagged. Review them: do, delegate, or delete.'},
+    {h:'Progress Notes',p:'Click the expand arrow on a task to add timestamped progress notes.'},
+  ]},
+  notes:{title:'📝 Notes',sections:[
+    {h:'Freeform Notes',p:'Notes with categories and tags. Click a note to view full detail. Edit or delete from the detail view.'},
+  ]},
+  time:{title:'⏱ Time',sections:[
+    {h:'Time Tracking',p:'Log time blocks by category. Live timer or manual entry. Date navigation with ◀/▶/Today.'},
+    {h:'Stats',p:'Screen Time–style breakdown: day, week, or month view with stacked category bars.'},
+    {h:'AI Bulk Parse',p:'Paste a description of your day and AI creates time blocks automatically.'},
+  ]},
+  journal:{title:'📔 Journal',sections:[
+    {h:'Daily Journal',p:'One entry per day with mood tracking (1–5). Click a date in the sidebar to view past entries.'},
+    {h:'Mood Tracking',p:'Rate your day 1–5. Over time, you\'ll see mood patterns in the sidebar.'},
+  ]},
+  calendar:{title:'📅 Calendar',sections:[
+    {h:'Google Calendar',p:'Shows your upcoming 14 days of events from Google Calendar.'},
+    {h:'Quick Event',p:'Create a new event directly from Life OS. Syncs to Google Calendar.'},
+  ]},
+  vehicles:{title:'🚗 Vehicles',sections:[
+    {h:'Fleet Manager',p:'Full vehicle tracking: fuel, services, costs, economics, checks, and todos per vehicle.'},
+    {h:'⛽ Fuel',p:'Log each fill-up with litres, cost, station. Auto-calculates km/L, cost/km, distance. Import from Fuelly CSV.'},
+    {h:'🔧 Services',p:'<b>Service Day</b> — opens a full checklist. Check items as you go, enter per-item costs. Auto-saves if you close mid-service. Notes create follow-up todos. Reminders auto-advance when matched.'},
+    {h:'💰 Costs',p:'Total Cost of Ownership: purchase + fuel + maintenance + insurance + licence + all expenses. Recurring costs (monthly/annual) auto-expand. Add expenses with categories.'},
+    {h:'📈 Economics',p:'10-year keep vs replace analysis. All numbers calculated deterministically (not AI guesses). Add comparison vehicles, run the analysis. AI only writes the recommendation text.'},
+    {h:'🔋 Checks',p:'Battery: voltage, SOH%, SOC% with trend chart. Tyres: 4-corner tread depth (mm) with colour coding.'},
+    {h:'📝 Todos',p:'Per-vehicle checklists with categories (maintenance, nice-to-have, in-car, sound, cosmetic). Part numbers supported.'},
+    {h:'Service Reminders',p:'km-based + date-based intervals. Red (<1000km/14d), amber (<3000km/30d), green. ✅ Complete advances to next due. 📅 syncs to Google Calendar.'},
+    {h:'Workflow: Service Day',p:'1. Click Start Service Day → 2. Check items as you work → 3. Enter costs per item → 4. Add notes → 5. "→ Todo" for follow-ups → 6. Complete → reminders auto-advance'},
+  ]},
+  inventory:{title:'📦 Inventory',sections:[
+    {h:'Home Inventory',p:'Track household items with categories, quantities, serial numbers, warranty dates, purchase costs.'},
+    {h:'Prima Stock',p:'Business inventory for Prima Joinery: stock levels, suppliers, reorder points, cost per unit.'},
+  ]},
+};
+
+function openHelp(){
+  const activeTab=document.querySelector('.tab.active');
+  const tab=activeTab?activeTab.id.replace('tab-',''):'dashboard';
+  const help=HELP[tab]||HELP.dashboard;
+  const allTabs=Object.entries(HELP);
+  const modal=document.getElementById('help-modal');const body=document.getElementById('help-modal-body');
+  let h=`<div style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">${help.title} — Help</h3>
+      <button onclick="document.getElementById('help-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button>
+    </div>`;
+  // Current tab help
+  help.sections.forEach(s=>{
+    h+=`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:3px">${s.h}</div>
+      <div style="font-size:12px;color:var(--t2);line-height:1.5">${s.p}</div>
+    </div>`;
+  });
+  // Quick links to other tabs
+  h+=`<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bg3)">
+    <div style="font-size:11px;color:var(--t3);margin-bottom:6px">OTHER SECTIONS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px">
+      ${allTabs.filter(([k])=>k!==tab).map(([k,v])=>`<button class="btn btn-sm" onclick="switchTab('${k}');openHelp()" style="font-size:11px">${v.title}</button>`).join('')}
+    </div>
+  </div>`;
+  // App info
+  h+=`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bg3);font-size:10px;color:var(--t3)">
+    Life OS TvdS · Built by Tijmen van der Schyff · Powered by Claude AI<br>
+    Single-file PWA · Google Sheets backend · GitHub Pages<br>
+    <a href="https://github.com/tymenvds-bit/life-os-tvds" target="_blank" style="color:var(--blue)">GitHub repo</a>
+  </div></div>`;
+  body.innerHTML=h;modal.style.display='flex';
+}
+
 function openSettings(){
   document.getElementById('cfg-api').value=CFG.apiUrl||'';
   document.getElementById('cfg-key').value=CFG.apiKey||'';
