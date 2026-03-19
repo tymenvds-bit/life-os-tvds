@@ -2401,6 +2401,196 @@ async function syncReminderToCalendar(remId){
 }
 
 // --- Export Vehicle Data ---
+// --- Service Day Checklist ---
+const DEFAULT_CHECKLIST_PETROL=[
+  {section:'Fluids & Lubrication',items:[
+    {name:'Engine Oil',desc:'Drain and refill',default:true},
+    {name:'Oil Filter',desc:'Replace with oil change',default:true},
+    {name:'Fuel Filter',desc:'Replace',default:true},
+    {name:'Air Filter',desc:'Inspect/replace',default:true},
+    {name:'Spark Plugs',desc:'Replace',default:false},
+    {name:'Power Steering Fluid',desc:'Check — top up or flush if discoloured',default:true},
+    {name:'Coolant',desc:'Check level & condition — top up or replace',default:true},
+    {name:'Clutch Fluid',desc:'Check — top up or flush',default:false},
+    {name:'Brake Fluid',desc:'Check — top up or flush',default:false},
+    {name:'Wiper Washer Fluid',desc:'Top up with water/additive',default:true},
+    {name:'Grease Door Hinges',desc:'Lubricate all door hinges',default:true},
+    {name:'Grease Points',desc:'Air pump / grease nipples as applicable',default:false},
+  ]},
+  {section:'Mechanical & Safety',items:[
+    {name:'Check Brakes',desc:'Inspect pads, discs/drums, hoses, fluid leaks',default:true},
+    {name:'Rotate Tyres',desc:'Front to rear, cross pattern if directional',default:false},
+    {name:'Torque Wheel Nuts',desc:'Torque to spec',default:true},
+    {name:'Adjust Handbrake',desc:'Check lever travel, adjust shoes/cables',default:false},
+    {name:'Check Wheel Bearings',desc:'Spin check for noise/play; grease if serviceable',default:false},
+    {name:'Check Timing',desc:'Verify timing marks and adjustment',default:false},
+    {name:'Check Fan/Drive Belts',desc:'Inspect tension, cracks, and wear',default:true},
+  ]},
+  {section:'Inspection',items:[
+    {name:'Lights & Indicators',desc:'Check all bulbs and lenses',default:true},
+    {name:'Battery Condition',desc:'Voltage, corrosion, terminal tightness',default:true},
+    {name:'Propshaft Grease Nipples',desc:'U-joints and slip joints',default:false},
+    {name:'Suspension Bushes & Joints',desc:'Check for play or cracking',default:false},
+  ]}
+];
+
+const DEFAULT_CHECKLIST_DIESEL=JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_PETROL)).map(s=>{
+  // Replace spark plugs with glow plugs, add fuel water separator, turbo check
+  s.items=s.items.filter(i=>i.name!=='Spark Plugs'&&i.name!=='Check Timing');
+  if(s.section==='Fluids & Lubrication'){
+    s.items.splice(3,0,{name:'Fuel Water Separator',desc:'Drain water trap',default:true});
+    s.items.push({name:'Glow Plugs',desc:'Test and replace if faulty',default:false});
+  }
+  if(s.section==='Mechanical & Safety') s.items.push({name:'Check Turbo',desc:'Listen for whine, check oil feed lines',default:false});
+  if(s.section==='Inspection') s.items.push({name:'Exhaust & DPF',desc:'Check for leaks, soot buildup',default:false});
+  return s;
+});
+
+function getVehicleChecklist(vid){
+  const v=getVehicle(vid);if(!v)return[];
+  if(v.serviceChecklist){try{return JSON.parse(v.serviceChecklist);}catch{}}
+  return v.fuelType==='diesel'?JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_DIESEL)):JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_PETROL));
+}
+
+function openServiceDay(vid){
+  const v=getVehicle(vid);if(!v)return;
+  const checklist=getVehicleChecklist(vid);
+  const modal=document.getElementById('veh-modal');const body=document.getElementById('veh-modal-body');
+  let h=`<div style="max-height:80vh;overflow-y:auto;padding:12px">
+    <h3 style="margin:0 0 8px">🔧 Service Day — ${esc(v.name)}</h3>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <div><label style="font-size:10px;color:var(--t3)">Date</label><br><input id="sd-date" type="date" value="${TODAY}" style="width:130px"></div>
+      <div><label style="font-size:10px;color:var(--t3)">Odometer</label><br><input id="sd-odo" type="number" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:120px"></div>
+      <div><label style="font-size:10px;color:var(--t3)">Total Cost (R)</label><br><input id="sd-cost" type="number" placeholder="0" style="width:110px"></div>
+      <div><label style="font-size:10px;color:var(--t3)">Provider</label><br><input id="sd-provider" placeholder="Workshop" style="width:150px"></div>
+    </div>`;
+  checklist.forEach((sec,si)=>{
+    h+=`<div style="margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--gold);margin-bottom:4px;border-bottom:1px solid var(--bg3);padding-bottom:2px">${esc(sec.section)}</div>`;
+    sec.items.forEach((item,ii)=>{
+      h+=`<div style="display:flex;gap:6px;align-items:flex-start;padding:3px 0">
+        <input type="checkbox" id="sd-${si}-${ii}" ${item.default?'checked':''} style="margin-top:3px;cursor:pointer">
+        <div style="flex:1;min-width:0">
+          <label for="sd-${si}-${ii}" style="font-size:12px;cursor:pointer"><b>${esc(item.name)}</b> <span style="color:var(--t3);font-size:11px">— ${esc(item.desc)}</span></label>
+          <input id="sd-note-${si}-${ii}" placeholder="Notes..." style="font-size:10px;width:100%;margin-top:2px;padding:2px 6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);border-radius:3px">
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`<div style="margin-top:6px"><label style="font-size:10px;color:var(--t3)">Additional notes</label>
+    <textarea id="sd-notes" rows="2" style="width:100%" placeholder="General service notes..."></textarea></div>
+  <div style="display:flex;gap:8px;margin-top:10px;justify-content:space-between;flex-wrap:wrap">
+    <button class="btn btn-sm" onclick="editServiceChecklist('${vid}')">✏️ Edit template</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveServiceDay('${vid}')">✅ Complete Service</button>
+    </div>
+  </div></div>`;
+  body.innerHTML=h;modal.style.display='flex';
+}
+
+function saveServiceDay(vid){
+  const v=getVehicle(vid);if(!v)return;
+  const checklist=getVehicleChecklist(vid);
+  const date=document.getElementById('sd-date')?.value||TODAY;
+  const odo=document.getElementById('sd-odo')?.value||'';
+  const cost=document.getElementById('sd-cost')?.value||'0';
+  const provider=document.getElementById('sd-provider')?.value||'';
+  const notes=document.getElementById('sd-notes')?.value||'';
+  const completed=[];const names=[];
+  checklist.forEach((sec,si)=>{
+    sec.items.forEach((item,ii)=>{
+      if(document.getElementById(`sd-${si}-${ii}`)?.checked){
+        const note=document.getElementById(`sd-note-${si}-${ii}`)?.value||'';
+        completed.push({name:item.name,note,section:sec.section});
+        names.push(item.name);
+      }
+    });
+  });
+  if(!completed.length){toast('Check at least one item');return;}
+  const entry={id:uid(),vehicleId:String(vid),date,odometer:odo,totalCost:cost,
+    description:'Service: '+names.slice(0,5).join(', ')+(names.length>5?' +'+( names.length-5)+' more':''),
+    serviceType:'routine',provider,parts:JSON.stringify(completed),notes,createdAt:niso()};
+  DB.service_logs.push(entry);apiPost('append','ServiceLogs',{row:entry});
+  if(odo&&+odo>+(v.currentOdo||0)){v.currentOdo=odo;apiPost('update','Vehicles',{id:String(v.id),patch:{currentOdo:odo}});}
+  // Auto-advance matching reminders
+  const reminders=getVehicleReminders(vid);let advanced=0;
+  names.forEach(name=>{const nl=name.toLowerCase();
+    reminders.forEach(r=>{const rl=r.name.toLowerCase();
+      if(rl.includes(nl)||nl.includes(rl)||(nl.includes('oil')&&rl.includes('oil'))||(nl.includes('spark')&&rl.includes('spark'))||(nl.includes('brake')&&rl.includes('brake'))){
+        completeReminder(r.id);advanced++;}
+    });
+  });
+  closeModal();renderVehicles();
+  toast(`✅ Service logged: ${completed.length} items${advanced?' · '+advanced+' reminders advanced':''}`);
+}
+
+function editServiceChecklist(vid){
+  const v=getVehicle(vid);if(!v)return;
+  const checklist=getVehicleChecklist(vid);
+  const body=document.getElementById('veh-modal-body');
+  let h=`<div style="max-height:80vh;overflow-y:auto;padding:12px">
+    <h3 style="margin:0 0 8px">✏️ Edit Checklist — ${esc(v.name)}</h3>
+    <p style="font-size:11px;color:var(--t3);margin-bottom:8px">Customise the service checklist template for this vehicle. Ticked items are pre-checked on service day.</p>`;
+  checklist.forEach((sec,si)=>{
+    h+=`<div style="margin-bottom:10px" id="ec-section-${si}">
+      <input id="ec-sec-${si}" value="${esc(sec.section)}" style="font-weight:600;color:var(--gold);border:none;background:transparent;font-size:13px;width:100%;border-bottom:1px solid var(--bg3);margin-bottom:4px">`;
+    sec.items.forEach((item,ii)=>{
+      h+=`<div style="display:flex;gap:4px;margin-bottom:3px;align-items:center" class="ec-item">
+        <input type="checkbox" ${item.default?'checked':''} class="ec-def" title="Default checked">
+        <input value="${esc(item.name)}" style="width:150px;font-size:11px" class="ec-name" placeholder="Item name">
+        <input value="${esc(item.desc)}" style="flex:1;font-size:11px" class="ec-desc" placeholder="Description">
+        <button class="btn-icon" onclick="this.closest('.ec-item').remove()" style="font-size:10px">✕</button>
+      </div>`;
+    });
+    h+=`<button class="btn btn-sm" onclick="addEcItem(this)" style="font-size:10px;margin-top:2px">+ Add item</button></div>`;
+  });
+  h+=`<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;flex-wrap:wrap">
+    <button class="btn btn-sm" onclick="resetChecklist('${vid}')">↩️ Reset to default</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="openServiceDay('${vid}')">← Back</button>
+      <button class="btn btn-primary" onclick="saveServiceChecklist('${vid}')">💾 Save template</button>
+    </div>
+  </div></div>`;
+  body.innerHTML=h;
+}
+
+function addEcItem(btn){
+  const div=document.createElement('div');div.className='ec-item';
+  div.style='display:flex;gap:4px;margin-bottom:3px;align-items:center';
+  div.innerHTML=`<input type="checkbox" class="ec-def"><input style="width:150px;font-size:11px" class="ec-name" placeholder="Item name"><input style="flex:1;font-size:11px" class="ec-desc" placeholder="Description"><button class="btn-icon" onclick="this.closest('.ec-item').remove()" style="font-size:10px">✕</button>`;
+  btn.parentElement.insertBefore(div,btn);
+}
+
+function saveServiceChecklist(vid){
+  const v=getVehicle(vid);if(!v)return;
+  const sections=[];let si=0;
+  while(document.getElementById('ec-sec-'+si)){
+    const secName=document.getElementById('ec-sec-'+si).value;
+    const container=document.getElementById('ec-section-'+si);
+    const items=[];
+    container.querySelectorAll('.ec-item').forEach(row=>{
+      const def=row.querySelector('.ec-def')?.checked||false;
+      const name=row.querySelector('.ec-name')?.value?.trim()||'';
+      const desc=row.querySelector('.ec-desc')?.value?.trim()||'';
+      if(name)items.push({name,desc,default:def});
+    });
+    if(secName&&items.length)sections.push({section:secName,items});
+    si++;
+  }
+  v.serviceChecklist=JSON.stringify(sections);
+  apiPost('update','Vehicles',{id:String(v.id),patch:{serviceChecklist:v.serviceChecklist}});
+  closeModal();renderVehicles();toast('✅ Checklist saved for '+v.name);
+}
+
+function resetChecklist(vid){
+  const v=getVehicle(vid);if(!v)return;
+  if(!confirm('Reset to default? Your custom items will be lost.'))return;
+  v.serviceChecklist='';
+  apiPost('update','Vehicles',{id:String(v.id),patch:{serviceChecklist:''}});
+  closeModal();renderVehicles();toast('Checklist reset to default');
+}
+
 // --- AI Life Expectancy Estimate ---
 async function aiEstimateLife(vehicleId){
   const v=getVehicle(vehicleId);if(!v)return;
@@ -2727,7 +2917,8 @@ function renderFuelSub(box,v){
 function renderServicesSub(box,v){
   const reminders=checkServiceReminders(curVeh);
   const services=getVehicleServices(curVeh);
-  let h=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log service <button class="btn btn-sm" onclick="importServicesCSV()" title="Import from Fuelly services CSV">📥 Import CSV</button></div>
+  let h=`<div style="margin-bottom:10px"><button class="btn btn-primary" onclick="openServiceDay('${curVeh}')" style="width:100%;padding:12px;font-size:14px">🔧 Start Service Day</button></div>
+  <div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log service <button class="btn btn-sm" onclick="importServicesCSV()" title="Import from Fuelly services CSV">📥 Import CSV</button></div>
     <div class="row" style="margin-bottom:6px">
       <input id="sl-date" type="date" value="${TODAY}" style="width:130px">
       <input id="sl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
@@ -2796,6 +2987,7 @@ function renderServicesSub(box,v){
         </div>
         <div style="display:flex;align-items:center;gap:4px">
           ${s.totalCost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(s.totalCost)}</span>`:''}
+          ${(()=>{try{const p=JSON.parse(s.parts||'[]');return Array.isArray(p)&&p.length&&p[0].name?`<button class="btn-icon" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" title="View checklist">📋</button><div style="display:none;position:absolute;right:0;top:100%;background:var(--bg);border:1px solid var(--bg3);border-radius:6px;padding:6px;z-index:10;min-width:200px;font-size:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)">${p.map(i=>'✅ '+esc(i.name)+(i.note?' — <i>'+esc(i.note)+'</i>':'')).join('<br>')}</div>`:'';}catch{return '';}})()}
           <button class="btn-icon" onclick="delServiceLog('${s.id}')">🗑</button>
         </div>
       </div>`;
