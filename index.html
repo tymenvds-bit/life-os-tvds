@@ -2158,60 +2158,97 @@ async function runReplacementAnalysis(vehicleId){
   const v=getVehicle(vehicleId);if(!v)return;
   const stats=calcVehicleStats(vehicleId);
   const mTrend=getMaintenanceTrend(vehicleId);
-  const expenses=getVehicleExpenses(vehicleId);
   const comparisons=getVehicleComparisons(vehicleId);
   if(!comparisons.length){toast('Add at least one comparison vehicle first');return;}
   toast('🤖 Running economics analysis…');
-  // Build data package for Claude
-  const keepData={
-    vehicle:v.name,purchasePrice:stats.purchasePrice,purchaseDate:v.purchaseDate,
-    currentOdo:stats.currentOdo,totalKm:stats.totalKm,
-    avgKmPerYear:Math.round(stats.annualKm),avgKmL:+stats.avgKmL.toFixed(1),
-    totalFuelCost:Math.round(stats.totalFuelCost),totalServiceCost:Math.round(stats.totalServiceCost),
-    totalExpenses:Math.round(stats.totalExpenses),
-    insuranceAnnualHistoric:Math.round(stats.insuranceCost/(stats.yearsOwned||1)),
-    licenceAnnualHistoric:Math.round(stats.licenceCost/(stats.yearsOwned||1)),
-    insuranceAnnualCurrent:Math.round(getActiveAnnualByCategory(vehicleId,'insurance')),
-    licenceAnnualCurrent:Math.round(getActiveAnnualByCategory(vehicleId,'licence')),
-    maintenanceTrend:mTrend.projected,
-    yearsOwned:+stats.yearsOwned.toFixed(1),annualCost:Math.round(stats.annualCost),
-    resaleEstimate:v.name.toLowerCase().includes('gq')?'R80000-120000 (classic 4x4, appreciating)':'Standard SA depreciation'
+
+  // === PRE-CALCULATE ALL DETERMINISTIC NUMBERS IN CODE (not AI) ===
+  const FUEL_PRICE=21.50; // Current SA Unleaded 95 inland (Mar 2026)
+  const FUEL_INFL=0.05;   // Fuel price inflation p.a.
+  const CPI=0.055;        // General CPI (insurance, licence)
+  const MAINT_INFL=0.05;  // Maintenance escalation p.a.
+  const annualKm=Math.round(stats.annualKm)||16000;
+  const avgKmL=+stats.avgKmL||5;
+  const insAnnual=Math.round(getActiveAnnualByCategory(vehicleId,'insurance'))||0;
+  const licAnnual=Math.round(getActiveAnnualByCategory(vehicleId,'licence'))||0;
+  const maintPerKm=stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3;
+
+  // Keep scenario — calculated in code
+  const keepYears=[];let keepCum=0;
+  for(let yr=1;yr<=10;yr++){
+    const fuel=Math.round(annualKm/avgKmL*FUEL_PRICE*Math.pow(1+FUEL_INFL,yr-1));
+    const maint=Math.round(annualKm*maintPerKm*Math.pow(1+MAINT_INFL,yr-1));
+    const ins=Math.round(insAnnual*Math.pow(1+CPI,yr-1));
+    const lic=Math.round(licAnnual*Math.pow(1+CPI,yr-1));
+    keepCum+=fuel+maint+ins+lic;
+    keepYears.push({year:yr,fuel,maintenance:maint,insurance:ins,licence:lic,other:0,cumulative:keepCum});
+  }
+  const keepResale=v.name.toLowerCase().includes('gq')?100000:Math.round(stats.purchasePrice*0.15);
+
+  // Alternative scenarios — calculated in code
+  const altScenarios=comparisons.map(c=>{
+    const price=+c.purchasePrice||0;
+    const rate=(+c.financeRate||11.75)/100/12; // monthly rate
+    const term=+c.financeTerm||0;
+    const kml=+c.expectedKmPerL||8;
+    const maintPkm=+c.expectedMaintenancePerKm||1.5;
+    const altIns=+c.insuranceAnnual||5000;
+    const altLic=+c.licenceAnnual||2000;
+    const altKmYr=+c.projectedKmPerYear||annualKm;
+    // Finance: PMT formula (0 if cash/no term)
+    const monthlyPmt=term>0?Math.round(price*rate*Math.pow(1+rate,term)/(Math.pow(1+rate,term)-1)):0;
+    const annualFinance=monthlyPmt*12;
+    // Depreciation: 20% yr1, 12% thereafter
+    let vehicleValue=price;
+    const years=[];let cum=0;
+    for(let yr=1;yr<=10;yr++){
+      const depRate=yr===1?0.20:0.12;
+      const dep=Math.round(vehicleValue*depRate);
+      vehicleValue-=dep;
+      const fuel=Math.round(altKmYr/kml*FUEL_PRICE*Math.pow(1+FUEL_INFL,yr-1));
+      // Maintenance: low during warranty (yr1-3), escalating after
+      const maint=yr<=3?Math.round(2000*Math.pow(1+CPI,yr-1)):Math.round(altKmYr*maintPkm*Math.pow(1+MAINT_INFL,yr-4));
+      const ins=Math.round(altIns*Math.pow(1+CPI,yr-1));
+      const lic=Math.round(altLic*Math.pow(1+CPI,yr-1));
+      const fin=yr<=(term/12)?annualFinance:0;
+      cum+=fuel+maint+ins+lic+fin+dep;
+      years.push({year:yr,fuel,maintenance:maint,insurance:ins,licence:lic,finance:fin,depreciation:dep,cumulative:cum});
+    }
+    return{name:c.comparisonName||c.targetVehicle,years,resaleValue:Math.round(vehicleValue),netCost10Year:cum-Math.round(vehicleValue)};
+  });
+
+  // Find crossover
+  let crossoverYear=null;
+  const cheapestAlt=altScenarios.reduce((a,b)=>a.netCost10Year<b.netCost10Year?a:b);
+  for(let i=0;i<10;i++){
+    if(keepYears[i].cumulative>cheapestAlt.years[i].cumulative){crossoverYear=i+1;break;}
+  }
+
+  // Only ask AI for the recommendation text (not the numbers)
+  const keepNet=keepCum-keepResale;
+  const summaryForAI={
+    vehicle:v.name,keepNet10Year:keepNet,keepResale,
+    alternatives:altScenarios.map(a=>({name:a.name,net10Year:a.netCost10Year,resale:a.resaleValue})),
+    crossoverYear,annualKm,avgKmL,fuelPrice:FUEL_PRICE,
+    isClassic4x4:v.name.toLowerCase().includes('gq')||v.name.toLowerCase().includes('patrol'),
+    keepYr1:keepYears[0],keepYr10:keepYears[9]
   };
-  const alternatives=comparisons.map(c=>({
-    name:c.comparisonName||c.targetVehicle,purchasePrice:+c.purchasePrice,
-    financeRate:+c.financeRate||11.75,financeTerm:+c.financeTerm||0,
-    expectedKmL:+c.expectedKmPerL||8,expectedMaintPerKm:+c.expectedMaintenancePerKm||1.5,
-    insuranceAnnual:+c.insuranceAnnual||5000,licenceAnnual:+c.licenceAnnual||2000,
-    projectedKmPerYear:+c.projectedKmPerYear||stats.annualKm
-  }));
-  const prompt=`You are a South African vehicle economics analyst. Calculate a 10-year Total Cost of Ownership comparison.
+  let recommendation='';
+  try{
+    const raw=await claude(`You are a South African vehicle economics analyst. Write a 2-3 sentence recommendation based on these PRE-CALCULATED numbers (do NOT recalculate — the numbers are exact).
 
-KEEP CURRENT VEHICLE:
-${JSON.stringify(keepData,null,2)}
+${JSON.stringify(summaryForAI,null,2)}
 
-ALTERNATIVE VEHICLE(S):
-${JSON.stringify(alternatives,null,2)}
+Write in Tijmen's voice — direct, practical, ZAR amounts, no corporate jargon. State the cheapest option and the Rand difference. If keeping is cheapest, mention why (appreciating classic, no finance, etc). If replacing is cheaper, state the crossover year.`,'Direct SA vehicle analyst. 2-3 sentences only.',500);
+    recommendation=raw.trim();
+  }catch(e){recommendation='Analysis complete — review the numbers below.';}
 
-IMPORTANT DATA NOTES:
-- insuranceAnnualCurrent = the CURRENT active insurance premium rate (use this for Year 1 projection, then inflate by CPI each year)
-- insuranceAnnualHistoric = the average over the ownership period (for reference only)
-- licenceAnnualCurrent = current licence cost (use for Year 1, inflate by CPI)
-- totalExpenses = actual total insurance + licence + other expenses spent to date (already correctly calculated from recurring entries)
-
-SA ASSUMPTIONS: Prime rate 11.75%, fuel inflation 5% p.a., insurance/licence inflation (general CPI) 5.5%, current Unleaded 95 price ~R21/L.
-New vehicle depreciation: 20% year 1, 12% per year thereafter. Used vehicle: 10% per year.
-Opportunity cost of capital: 8% (SA money market).
-Maintenance during warranty (3-5 years): R1000-2000/year. After warranty: escalating from R5000/year.
-
-Return ONLY valid JSON (no markdown, no code fences):
-{"keepScenario":{"years":[{"year":1,"fuel":0,"maintenance":0,"insurance":0,"licence":0,"other":0,"cumulative":0},...for years 1-10],"resaleValue":0,"netCost10Year":0},
-"alternatives":[{"name":"","years":[{"year":1,"fuel":0,"maintenance":0,"insurance":0,"licence":0,"finance":0,"depreciation":0,"cumulative":0},...for years 1-10],"resaleValue":0,"netCost10Year":0}],
-"crossoverYear":null,"recommendation":"2-3 sentence recommendation in Tijmen's voice — direct, practical, no corporate jargon. Include the ZAR difference."}`;
+  const results={
+    keepScenario:{name:v.name,years:keepYears,resaleValue:keepResale,netCost10Year:keepNet},
+    alternatives:altScenarios,crossoverYear,recommendation
+  };
 
   try{
-    const raw=await claude(prompt,'You are a South African vehicle economics analyst. Return only valid JSON.',3000);
-    const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
-    const results=JSON.parse(clean);
     // Save results to the first comparison
     const comp=comparisons[0];
     comp.results=JSON.stringify(results);comp.lastRunDate=TODAY;
@@ -2890,6 +2927,12 @@ function renderEconomicsSub(box,v){
       <div><span style="color:var(--t3)">Cost/km:</span> <b>R${stats.costPerKm.toFixed(2)}</b></div>
       <div><span style="color:var(--t3)">Total TCO:</span> <b>${formatR(stats.totalCost)}</b></div>
       <div><span style="color:var(--t3)">Years owned:</span> <b>${stats.yearsOwned.toFixed(1)}</b></div>
+    </div>
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg3);font-size:10px;color:var(--t3);display:flex;gap:12px;flex-wrap:wrap">
+      <span>📐 Assumptions: Fuel R21.50/L</span><span>Fuel inflation 5%/yr</span><span>CPI 5.5%/yr</span>
+      <span>Ins: ${formatR(getActiveAnnualByCategory(curVeh,'insurance'))}/yr</span>
+      <span>Lic: ${formatR(getActiveAnnualByCategory(curVeh,'licence'))}/yr</span>
+      <span>Maint: R${(stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3).toFixed(2)}/km</span>
     </div>
   </div>`;
   // Add comparison form
