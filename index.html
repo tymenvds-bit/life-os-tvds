@@ -2928,11 +2928,12 @@ function renderEconomicsSub(box,v){
       <div><span style="color:var(--t3)">Total TCO:</span> <b>${formatR(stats.totalCost)}</b></div>
       <div><span style="color:var(--t3)">Years owned:</span> <b>${stats.yearsOwned.toFixed(1)}</b></div>
     </div>
-    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg3);font-size:10px;color:var(--t3);display:flex;gap:12px;flex-wrap:wrap">
-      <span>📐 Assumptions: Fuel R21.50/L</span><span>Fuel inflation 5%/yr</span><span>CPI 5.5%/yr</span>
-      <span>Ins: ${formatR(getActiveAnnualByCategory(curVeh,'insurance'))}/yr</span>
-      <span>Lic: ${formatR(getActiveAnnualByCategory(curVeh,'licence'))}/yr</span>
-      <span>Maint: R${(stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3).toFixed(2)}/km</span>
+    <div style="margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--t2);display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <span style="font-weight:600;color:var(--t)">📐 Analysis assumptions:</span>
+      <span>⛽ R21.50/L</span><span>📈 Fuel +5%/yr</span><span>📈 CPI +5.5%/yr</span>
+      <span>🛡 Ins: <b>${formatR(getActiveAnnualByCategory(curVeh,'insurance'))}/yr</b></span>
+      <span>📋 Lic: <b>${formatR(getActiveAnnualByCategory(curVeh,'licence'))}/yr</b></span>
+      <span>🔧 Maint: <b>R${(stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3).toFixed(2)}/km</b></span>
     </div>
   </div>`;
   // Add comparison form
