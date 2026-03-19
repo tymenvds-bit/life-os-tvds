@@ -14,7 +14,7 @@ Personal life operating system for Tijmen van der Schyff.
 - Vanilla HTML/CSS/JS — no frameworks, no build step, no dependencies
 - Fonts: DM Sans, DM Mono, Lora (loaded from Google Fonts)
 - Auto light/dark theme (Pretoria sunrise/sunset via `SUN_TABLE`) with manual override in Settings (`CFG.theme`: `auto`|`dark`|`light`)
-- Gold accent color (`#c9a84c`)
+- Gold accent colour (`#c9a84c`)
 
 ## Modules
 
@@ -210,7 +210,7 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 **Context**: Tijmen cooks for 2 at home and handles all meal planning and groceries.
 
 **Vision**: Turn HomeInventory into a smart kitchen system:
-- **Pantry tracker** — categorize inventory into pantry staples, spices, fridge, freezer, fresh produce. Track quantities and expiry dates.
+- **Pantry tracker** — categorise inventory into pantry staples, spices, fridge, freezer, fresh produce. Track quantities and expiry dates.
 - **AI recipe suggestions** — "What can I cook tonight?" sends pantry/spice inventory to Claude, gets recipes using what's on hand. Suggest meals that use ingredients nearing expiry first.
 - **Monthly meal planner** — AI generates a 4-week meal plan for 2 people, balanced nutrition, considers what's already in the pantry. Calendar integration for meal schedule.
 - **Auto grocery list** — from the meal plan, subtract what's in pantry, generate a shopping list grouped by store aisle. Track favourite stores/prices (Checkers, Woolworths, etc.)
@@ -306,7 +306,7 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 - Claude Vision OCR works the same regardless of stack — just an API call from the browser
 - Life OS already has capture flow, API layer, service worker, theme system
 - No new infrastructure needed (no Supabase, no Vercel, no separate auth)
-- The standalone spec (PATROL_FLEET_MANAGER_SPEC.md) has excellent data modeling and Claude Vision prompts — adopted as reference
+- The standalone spec (PATROL_FLEET_MANAGER_SPEC.md) has excellent data modelling and Claude Vision prompts — adopted as reference
 
 **Previous reference docs** (in Downloads, for data/prompts only):
 - `PATROL_FLEET_MANAGER_SPEC.md` — 420-line standalone spec (Next.js + Supabase), contains detailed PostgreSQL schema, Claude Vision OCR prompts, service reminder defaults, seed data, MoSCoW features
@@ -488,7 +488,7 @@ AI-driven 10-year TCO projection comparing current vehicle vs multiple alternati
 **Principles to implement** (based on GTD, Eisenhower, time-boxing, cognitive load research):
 
 - **Daily Focus List** — each morning (or night before), AI selects the 3-5 tasks that matter most today based on: urgency, due date, dependencies, energy level, available time. Everything else is "backlog" — visible but not screaming at you.
-- **Eisenhower auto-sort** — AI categorizes tasks into: Do Now (urgent+important), Schedule (important, not urgent), Delegate (urgent, not important), Eliminate (neither). Surface only "Do Now" and "Schedule" on the dashboard.
+- **Eisenhower auto-sort** — AI categorises tasks into: Do Now (urgent+important), Schedule (important, not urgent), Delegate (urgent, not important), Eliminate (neither). Surface only "Do Now" and "Schedule" on the dashboard.
 - **Weekly Review prompt** — every Sunday, AI walks you through: What got done? What's overdue? What should be dropped/delegated? What's the #1 priority this week? Generates a weekly plan.
 - **Task aging & decay** — tasks untouched for 14+ days get flagged: "Still relevant?" Force a decision: reschedule, delegate, or delete. Prevents the 100-item graveyard.
 - **Context batching** — group tasks by context (calls, emails, factory, office, home) so you can batch similar work. "I have 30 min and a phone" → show all call tasks.
