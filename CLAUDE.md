@@ -18,23 +18,26 @@ Personal life operating system for Tijmen van der Schyff.
 
 ## Modules
 
-| Tab | Sheet | Description |
-|-----|-------|-------------|
-| Dashboard | — | Command centre: time-based greeting, stat row (urgent/open/logged/done today/journal), AI Focus (3-5 tasks with tick-off), today's calendar, overdue list (interactive tick-off), time accountability (progress bar vs 8h target, top categories), waiting/in-progress status, stale task alerts. Default landing tab. |
-| Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), Email Briefing, Quick Add Task |
-| Todos | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown. Capture AI matches brain dump items to existing tasks via `task_updates`. |
-| Notes | Notes | Freeform notes with categories and tags |
+| Tab | Sheet(s) | Description |
+|-----|----------|-------------|
+| Dashboard | — | Command centre: 3-column grid with Today's Board (pinnable AI-picked tasks), Schedule Today, Priority Tasks, Overdue list, Time accountability, Vehicle Services Due widget, Status (waiting/in-progress), Stale task alerts. Default landing tab. |
+| Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), Email Briefing, Quick Add Task, 📷 Scan Slip (Claude Vision OCR) |
+| Tasks | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown, "What should I do next?" AI button |
+| Notes | Notes | Freeform notes with categories, tags, detail view with edit/delete |
 | Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
-| Journal | Journal | Daily journal with mood tracking |
-| Vehicles | Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleChecks, VehicleTodos | Fleet manager: multi-vehicle support, fuel logging (manual + Claude Vision OCR), service tracking with km/date reminders, cost/TCO analysis, battery/tyre checks, per-vehicle todos. Currently uses legacy GQ_Patrol/GU_Patrol sheets (to be migrated) |
-| Home | HomeInventory | Household item tracking |
-| Prima Stock | PrimaStock | Business stock/inventory |
+| Journal | Journal | Daily journal with mood tracking (1-5), sidebar list, detail view |
 | Calendar | Google Calendar API | Live events from Google Calendar; create via capture or Quick Event |
+| Vehicles | Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos | Full fleet manager with 7 sub-tabs: Dashboard, Fuel, Services, Costs, Economics, Checks, Todos. See Vehicle Module section below. |
+| Inventory | HomeInventory, PrimaStock | Combined tab with two sub-tabs: Home (household items) and Prima Stock (business inventory). Switching via `setInvTab()`. |
 
 ## Deployment
 
-- Push to `main` → GitHub Actions (`.github/workflows/deploy.yml`) → GitHub Pages
-- Live at: https://tymenvds-bit.github.io/life-os-tvds/
+- **Frontend**: Push to `main` → GitHub Actions auto-deploys to GitHub Pages (also auto-bumps sw.js cache version using git SHA)
+- **Backend**: `clasp push && clasp deploy -i "AKfycbx17_C_TeXc5uww26GivAnJffT6GPWzqjInJ_BWn0D5qZV0NlOkIxFn2yT_eO73v1HdAw" -d "description"` (requires `export PATH="/c/Program Files/nodejs:/c/Users/tymen/AppData/Roaming/npm:$PATH"` in terminal)
+- **Live at**: https://tymenvds-bit.github.io/life-os-tvds/
+- **clasp config**: `backend/.clasp.json` → Script ID `1GkDp58EbeexoyBZIO0eKNIzSQY_b2gv3GGDgi1ibrXSfhFNI2SkFeSjy`
+- **API URL**: `https://script.google.com/macros/s/AKfycbx17_C_TeXc5uww26GivAnJffT6GPWzqjInJ_BWn0D5qZV0NlOkIxFn2yT_eO73v1HdAw/exec`
+- **AI model**: `claude-sonnet-4-20250514` (used for both text and vision calls)
 
 ## Rules
 
@@ -48,71 +51,108 @@ Personal life operating system for Tijmen van der Schyff.
 
 ## Deployment & Persistence Checklist
 
-**CRITICAL: Every change that adds/modifies Google Sheets schemas requires ALL THREE steps:**
+**CRITICAL: Every change that adds/modifies Google Sheets schemas requires ALL steps:**
 
-1. **Push to GitHub** → `git add . && git commit && git push` → GitHub Actions deploys frontend
-2. **Redeploy `api.gs`** → Google Sheet → Extensions → Apps Script → Deploy → Manage deployments → Edit → **New version** → Deploy
+1. **Push to GitHub** → `git add . && git commit && git push` → GitHub Actions deploys frontend + auto-bumps sw.js
+2. **Deploy backend** → run `clasp push && clasp deploy -i "AKfycbx17..." -d "description"` from `backend/` directory
 3. **Hard refresh** → `Ctrl+Shift+R` (PC) / `Cmd+Shift+R` (Mac)
 
-**If step 2 is skipped:** Data saves to localStorage but NOT to Google Sheets. On next hard refresh, Sheets returns stale/empty data and overwrites localStorage → data loss.
+**If step 2 is skipped:** Frontend health check will toast: "⚠️ Backend outdated — missing: [sheets]. Redeploy api.gs!" GitHub Actions also shows a warning annotation when api.gs is modified.
 
 **Persistence test after every deploy:**
 1. Add a test item (expense, fuel log, todo, etc.)
 2. Hard refresh the page
 3. ✅ Item should still be there
 4. Check browser console for `✅ apiPost` or `⚠️ Sync failed` messages
-5. Check Google Sheets directly to confirm the row exists
+5. Can also verify via API: `curl "API_URL?action=read&sheet=SheetName"`
 
-**When schemas change (new columns, new sheets):**
-- The Apps Script `getOrCreateSheet()` auto-creates new sheet tabs with headers
-- But ONLY if the deployed version has the updated SCHEMAS object
-- Old deployments will silently ignore new columns/sheets
+**Automated safeguards:**
+- `sw.js` version auto-bumped by GitHub Actions (git SHA) — no manual bumps needed
+- `checkBackendHealth()` runs on startup — pings backend, compares `schemaKeys` against `EXPECTED_SHEETS`, toasts warning if mismatch
+- GitHub Actions warns when `backend/api.gs` changes detected in push
 
-**Common symptoms of stale api.gs deployment:**
-- Data appears after adding but disappears on refresh
-- No error toasts (the POST succeeds but writes to wrong/missing columns)
-- Console shows `✅ apiPost` but Sheets doesn't have the data
+## Continuous Improvement
+
+- **Workflow optimisation**: Continuously evaluate if development, deployment, and data workflows can be improved. If a manual step is repeated more than twice, automate it.
+- **App workflow optimisation**: Continuously evaluate if the user's daily workflow in the app can be streamlined. Reduce clicks, surface important data proactively, eliminate friction.
+- **After every session**: Review what went well, what caused friction, and whether CLAUDE.md needs updating.
 
 ## Key Functions
 
-- `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls
+**Core / API:**
+- `apiFetch(sheet)` / `apiPost(action, sheet, data)` — Google Sheets API calls (with localStorage cache + error toasts)
 - `calFetch(days)` / `calCreate(ev)` — Google Calendar API (via Apps Script)
-- `emailFetch(max)` — fetch unread emails from Gmail via Apps Script
-- `emailBriefing()` — AI-powered email triage: fetches unread emails, sends to Claude for categorization (urgent/actionable/fyi/low), renders briefing with one-click task creation
-- `emailToTask(title)` — creates a todo from an email briefing suggestion
-- `claude(prompt, system, max)` — Claude API call
-- `capture(mode)` — AI-powered natural language capture (modes: `standard`, `eod`, `whatsapp`, `fuel`); sends existing open tasks to AI for matching; routes to task_updates, todos, notes, time, journal, calendar, fuel
-- `buildPreview(parsed)` — renders editable preview with inline fields and delete buttons; stores data in `captureData` global
-- `collectPreviewEdits()` — reads edited values from preview DOM back into `captureData` before saving
-- `removePreviewItem(section, index)` — removes an item from preview and re-renders
-- `commitCapture()` — saves all captured items from `captureData`; handles task_updates (progress + status), new todos, notes, duration-based time blocks, journal, fuel, calendar events
-- `renderAll()` — re-renders all tabs
-- `cycleStatus(id)` / `setTaskStatus(id, status)` — cycle or set task status (open → in-progress → waiting → done)
-- `addProgress(id)` — add timestamped progress note to a task
-- `getStatus(t)` — get task status (backward-compatible with legacy `done` field)
-- `isOverdue(t)` — check if task is past due and not done
-- `esc(s)` — HTML-escape strings (XSS prevention)
-- `uid()` — generate unique IDs
-- `toast(msg)` — show notification
-- `normalizeDate(d)` — convert any date format (Date object, MM/DD/YYYY, ISO) to YYYY-MM-DD
-- `shiftTimeDate(offset)` — navigate Time tab date (◀/▶ arrows, Today button)
-- `setTimeView(mode)` / `renderTimeStats()` — Screen Time-style visualization (day/week/month with stacked category bars)
-- `applyTheme()` / `isDaylight()` — auto light/dark theme based on Pretoria sunrise/sunset times; manual override in Settings
-- `loadAll()` — fetches all sheets from API + normalizes dates; loads calendar events
-- `renderDashboard()` — renders the full dashboard command centre (greeting, stats, focus, calendar, overdue, time, waiting, stale)
-- `dashToggle(id)` — toggle task done from dashboard and re-render
-- `renderAll()` calls: `renderTodos()`, `renderNotes()`, `renderTimeLog()`, `renderJournal()`, `renderCalendar()`, `renderVehicles()`, `renderHome()`, `renderStock()`, `renderDashboard()`, `updateStats()`
-- `startTimer()` / `stopTimer()` — live timer with elapsed display in header
-- `addTimeBlock()` — manual time entry with start/end/title/category
-- `bulkParse()` — AI parses freeform time text into structured blocks
+- `claude(prompt, system, max)` — Claude API call (model: `claude-sonnet-4-20250514`)
+- `claudeVision(base64, mediaType, prompt, system, max)` — Claude Vision API (image + text)
+- `loadAll()` — fetches 16 sheets from API + normalizes dates; loads calendar events
+- `renderAll()` calls: `renderTodos()`, `renderNotes()`, `renderJournalSidebar()`, `renderTimeLog()`, `renderCalendar()`, `renderInventory()`, `renderVehicles()`, `renderDashboard()`, `updateStats()`
+- `checkBackendHealth()` — pings backend, compares schema keys, toasts warning if api.gs is outdated
+- `initApp()` — app initialization: theme, loadAll, renderAll, service worker, notifications, health check
+
+**Capture & AI:**
+- `capture(mode)` — AI-powered natural language capture (modes: `standard`, `eod`, `whatsapp`, `fuel`)
+- `buildPreview(parsed)` / `collectPreviewEdits()` / `removePreviewItem(section, index)` — preview system
+- `commitCapture()` — saves all captured items; routes to task_updates, todos, notes, time, journal, fuel, calendar
+- `emailFetch(max)` / `emailBriefing()` / `emailToTask(title)` — email triage system
 - `quickAdd()` — quick task add from Capture tab
+- `aiNextTask()` — "What should I do next?" AI recommendation
+
+**Dashboard:**
+- `renderDashboard()` — 3-column grid: Today's Board, Schedule, Priority Tasks, Overdue, Time, Vehicle Services Due, Status, Stale
+- `loadTodayBoard()` / `commitToday(id)` / `uncommitToday(id)` / `isOnBoard(id)` / `boardToggle(id)` — Today's Board management (persists to Sheets via `TodayBoard` localStorage key)
+- `dashToggle(id)` — toggle task done from dashboard
+- `renderSuggestions()` — AI suggestions panel
+
+**Tasks:**
+- `cycleStatus(id)` / `setTaskStatus(id, status)` / `toggleTodo(id)` — task status management
+- `addProgress(id)` — add timestamped progress note
+- `getStatus(t)` / `isOverdue(t)` / `isStale(t)` — status helpers
+- `deleteTodo(id)` / `expandTodo(id)` / `updateDue(id, newDue)` — task CRUD
+
+**Vehicle Module (full fleet manager):**
+- `getVehicle(id)` / `getVehicleFuel(vid)` / `getVehicleServices(vid)` / `getVehicleReminders(vid)` / `getVehicleExpenses(vid)` / `getVehicleComparisons(vid)` / `getVehicleChecks(vid,type)` / `getVehicleTodos(vid)` — data getters
+- `selectVehicle(id)` / `setVehSub(sub, btn)` — UI navigation (7 sub-tabs)
+- `openVehicleForm(editId)` / `saveVehicle(editId)` / `deleteVehicle(id)` — vehicle CRUD
+- `addFuelLog()` / `delFuelLog(id)` — fuel entry with auto km/L, cost/km, distance calc
+- `addServiceLog()` / `delServiceLog(id)` — service log CRUD
+- `addServiceReminder()` / `delReminder(id)` / `completeReminder(remId)` — reminders with auto-advance
+- `checkServiceReminders(vid)` — returns reminders with urgency (red/amber/green), km/days remaining
+- `syncReminderToCalendar(remId)` — creates Google Calendar event for reminder due date
+- `addExpense()` / `editExpense(id)` / `updateExpense()` / `cancelEditExpense()` / `delExpense(id)` — expense CRUD with recurring support
+- `addVehicleCheck(type)` / `delVehicleCheck(id)` — battery SOH/voltage, tyre tread depth logging
+- `addVehicleTodo()` / `toggleVehicleTodo(id)` / `delVehicleTodo(id)` — per-vehicle checklists
+- `calcVehicleStats(vid)` — comprehensive TCO: avgKmL, costPerKm, annualCost, expense breakdown by category
+- `calcRecurringCosts(vid)` — expands recurring expenses (monthly/quarterly/annual) to actual period totals
+- `getMaintenanceTrend(vid)` — linear regression on historical maintenance for future projection
+- `runReplacementAnalysis(vehicleId)` — AI-driven 10-year TCO keep vs replace analysis
+- `aiSuggestComparisons()` — AI generates 3 comparison vehicles (comparable, practical, economical)
+- `exportVehicleData(vid)` — CSV export of all vehicle data
+- `importFuellyCSV()` / `importServicesCSV()` — bulk CSV import
+- `scanReceipt()` / `scanOdometer()` / `openReceiptScanner()` / `openOdoScanner()` — Claude Vision OCR
+- `renderVehicleDash()` / `renderFuelSub()` / `renderServicesSub()` / `renderCostsSub()` / `renderEconomicsSub()` / `renderChecksSub()` / `renderVehicleTodosSub()` — sub-tab renderers
+- `renderEconomicsReport(res, keepName, stats)` — multi-vehicle comparison chart + year-by-year table
+- `formatR(n)` / `formatRd(n)` — ZAR currency formatting
+
+**Notifications:**
+- `checkServiceNotifications()` — browser push notification for overdue vehicle services (once per day)
+
+**Utilities:**
+- `esc(s)` — HTML-escape (XSS prevention)
+- `uid()` — generate unique IDs
+- `toast(msg, duration)` — show notification
+- `normalizeDate(d)` — convert any date format to YYYY-MM-DD
+- `niso()` — current ISO timestamp
+- `fmtDate(d)` / `fmtTime(d)` / `fmtDur(m)` — date/time formatters
+- `applyTheme()` / `isDaylight()` — auto light/dark theme (Pretoria sunrise/sunset)
+- `switchTab(tab)` — tab switching with lazy init
+- `setSyncBadge(state)` — sync status badge (synced/pending/offline)
 
 ## Backend API Actions (api.gs)
 
 | Action | Method | Description |
 |--------|--------|-------------|
 | `read` | GET | Read rows from a sheet |
-| `ping` | GET | Health check |
+| `ping` | GET | Health check — returns `{ok, timestamp, schemaKeys}` for frontend version checking |
 | `calendar` | GET | List Google Calendar events (`?days=14`) |
 | `emails` | GET | List unread Gmail messages (`?max=50`). Uses `GmailApp.search('is:unread in:inbox')`. Returns threadId, from, subject, snippet, date, labels, messageCount. |
 | `append` | POST | Add a row to a sheet |
@@ -131,6 +171,9 @@ Personal life operating system for Tijmen van der Schyff.
 | **Google Sheets** | Google account (`17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s`) | Source of truth for all data | Google's infrastructure, auto-versioned |
 | **Google Calendar** | Google account | Calendar events (independent of Life OS) | Standard Google backup |
 | **GitHub** | `tymenvds-bit/life-os-tvds` | Code versioning only (no user data) | Every commit recoverable |
+
+**All Google Sheets (16 active):**
+Todos, Notes, Time, Journal, Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, HomeInventory, PrimaStock + legacy: GQ_Patrol, GU_Patrol (vestigial, still loaded but not actively used)
 
 **Backup strategy**: Google Sheets IS the backup. Every write goes to Sheets via Apps Script. localStorage is just a fast cache.
 
@@ -291,7 +334,7 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 
 **Google Sheets data model** (one sheet per data type):
 
-`Vehicles` — id, name, make, model, variant, year, engine, fuelType, regNumber, vin, purchaseDate, purchaseOdo, purchasePrice, tankCapacityL, currentOdo, isActive, category (personal/family/fleet), notes, createdAt
+`Vehicles` — id, name, make, model, variant, year, engine, fuelType, regNumber, vin, purchaseDate, purchaseOdo, purchasePrice, tankCapacityL, currentOdo, isActive, category (personal/family/fleet), notes, createdAt, expectedLifeKm, expectedLifeYears, annualKmEstimate
 
 `FuelLogs` — id, vehicleId, date, odometer, litres, totalCost, pricePerL, kmPerL (calc), costPerKm (calc), distanceKm (calc), fuelType, station, cityPct, isFullTank, isMissed, paymentMethod, notes, createdAt
 
@@ -299,11 +342,13 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 
 `ServiceReminders` — id, vehicleId, name, intervalKm, intervalMonths, lastServiceDate, lastServiceOdo, nextDueDate, nextDueOdo, isActive, createdAt
 
-`VehicleExpenses` — id, vehicleId, date, category (licence/insurance/parts/accessories/other), description, amount, supplier, notes, createdAt
+`VehicleExpenses` — id, vehicleId, date, category (insurance/licence/tracker/tyres/co-payment/parts/accessories/tolls/other), description, amount, frequency (once/monthly/quarterly/annual), endDate, supplier, notes, createdAt
+
+`VehicleComparisons` — id, vehicleId, comparisonName, targetVehicle, purchasePrice, financeRate, financeTerm, expectedKmPerL, expectedMaintenancePerKm, insuranceAnnual, licenceAnnual, projectedKmPerYear, assumptions, results (JSON), lastRunDate, createdAt
 
 `VehicleChecks` — id, vehicleId, date, odometer, checkType (battery/tyres/brakes/general), data (JSON string), notes, createdAt
 
-`VehicleTodos` — id, vehicleId, category (maintenance/nice-to-have/in-car/sound), description, partNumber, isDone, completedDate, notes, sortOrder, createdAt
+`VehicleTodos` — id, vehicleId, category (maintenance/nice-to-have/in-car/sound/cosmetic), description, partNumber, isDone, completedDate, notes, sortOrder, createdAt
 
 **Claude Vision OCR prompts** (from standalone spec, adapted):
 
@@ -337,7 +382,7 @@ Odometer shows kilometres. Typically 6 digits.
 
 **UI design** (within Life OS Vehicles tab):
 - Vehicle selector dropdown at top of tab
-- Sub-navigation: Dashboard | Fuel | Services | Costs | Checks | Todos
+- Sub-navigation: Dashboard | Fuel | Services | Costs | Economics | Checks | Todos
 - Dashboard: stat cards (avg km/L, last km/L, best km/L, fill-ups), efficiency trend chart (SVG polyline), service reminders with urgency badges (red <1000km, amber <3000km, green), recent activity feed
 - Fuel: history list with km/L colour coding, cost per fill chart, photo scan button (camera → Claude Vision → confirm → save)
 - Services: upcoming reminders + history list with provider/cost
@@ -346,16 +391,16 @@ Odometer shows kilometres. Typically 6 digits.
 - Todos: per-vehicle checklist with categories, done/not-done toggle
 - Fuel capture mode in Universal Capture: photo slip + odo + reg → auto-populate
 
-**Phase 1 — MVP** (current sprint):
-- [ ] Create Google Sheets: Vehicles, FuelLogs, ServiceLogs, ServiceReminders
-- [ ] Vehicle CRUD (add/edit vehicles in Settings)
-- [ ] Rebuild Vehicles tab with vehicle selector + sub-nav
-- [ ] Vehicle dashboard with stat cards + service reminders
-- [ ] Manual fuel log entry (date, odo, litres, cost, station)
-- [ ] Fuel history list with km/L calculation
-- [ ] Service log CRUD
-- [ ] Service reminder engine (km-based + date-based, colour-coded alerts)
-- [ ] Backend: add Vehicles/FuelLogs/ServiceLogs/ServiceReminders sheet support to api.gs
+**Phase 1 — MVP** ✅ COMPLETE:
+- [x] Create Google Sheets: Vehicles, FuelLogs, ServiceLogs, ServiceReminders
+- [x] Vehicle CRUD (add/edit vehicles in modal form)
+- [x] Rebuild Vehicles tab with vehicle selector + 7-tab sub-nav
+- [x] Vehicle dashboard with stat cards, SVG efficiency chart, service reminders, activity feed, life bar
+- [x] Manual fuel log entry with auto km/L, cost/km, distance calculation
+- [x] Fuel history list with colour-coded km/L
+- [x] Service log CRUD
+- [x] Service reminder engine (km + date based, red/amber/green urgency, auto-advance via completeReminder)
+- [x] Backend: all vehicle sheet schemas in api.gs with auto-create
 
 **Phase 2 — Vision & Import**:
 - [x] Claude Vision receipt OCR (photo → extract → confirm → save) — `scanReceipt()`, `openReceiptScanner()`
@@ -369,24 +414,26 @@ Odometer shows kilometres. Typically 6 digits.
 - [x] 📷 Scan Slip button in Capture tab
 - [x] 📥 Import CSV button in fuel form header
 
-**Phase 3 — Extended tracking**:
-- [ ] VehicleExpenses sheet + expense log UI
-- [ ] VehicleChecks sheet (battery, tyres) + check log UI
-- [ ] VehicleTodos sheet + per-vehicle checklist
-- [ ] Efficiency trend chart (SVG polyline, like React prototype)
-- [ ] Cost breakdown visualization
-- [ ] TCO comparison between vehicles
+**Phase 3 — Extended tracking** ✅ COMPLETE:
+- [x] VehicleExpenses sheet + expense CRUD with edit, recurring costs (monthly/quarterly/annual), endDate support
+- [x] VehicleChecks sheet (battery SOH/voltage/SOC, tyre tread depth 4-corner) + check log UI with trend charts
+- [x] VehicleTodos sheet + per-vehicle checklist with categories, part numbers, filter tabs
+- [x] Efficiency trend chart (SVG polyline with axis labels, average line, tooltips)
+- [x] Cost breakdown visualization (category bars with percentages, monthly spend chart, recurring costs summary)
+- [x] TCO comparison between vehicles (Economics sub-tab with multi-vehicle chart)
 
-**Phase 4 — Polish**:
-- [ ] Licence renewal tracking + calendar alerts
-- [ ] Insurance tracking + premium history
-- [ ] Parts inventory with part numbers (from Excel data)
-- [ ] Export vehicle data to Excel
-- [ ] Dashboard widget: "Next service due" summary across all vehicles
-- [ ] Push notification via service worker for overdue services
+**Phase 4 — Polish** (partially complete):
+- [ ] Licence renewal tracking (can use ServiceReminders with intervalMonths=12, intervalKm=0)
+- [x] Insurance tracking + premium history (VehicleExpenses with category='insurance', YoY breakdown in Costs tab)
+- [ ] Parts inventory with Nissan part numbers (VehicleTodos has partNumber field — needs dedicated import from Excel)
+- [x] Export vehicle data to CSV — `exportVehicleData(vid)` with 📥 button on dashboard
+- [x] Dashboard widget: "🔧 Vehicle Services Due" shows red/amber reminders across all vehicles
+- [x] Push notification for overdue services — `checkServiceNotifications()` fires browser notification once per day
+- [x] Calendar sync for reminders — 📅 button on each reminder creates Google Calendar event
+- [x] Service reminder auto-advance — ✅ Complete button recalculates next due date/ODO
 
-**Phase 5 — Replacement Economics Calculator**:
-Monthly AI-driven analysis: "Should I keep this vehicle or replace it?" 10-year TCO projection comparing current vehicle vs alternatives.
+**Phase 5 — Replacement Economics Calculator** ✅ COMPLETE:
+AI-driven 10-year TCO projection comparing current vehicle vs multiple alternatives.
 
 **Keep-current projection** (per vehicle):
 - Fuel: known km/L × projected annual km × fuel price trend (SA CPI-linked, ~5% p.a.)
@@ -426,31 +473,14 @@ Monthly AI-driven analysis: "Should I keep this vehicle or replace it?" 10-year 
 - Natis/eNatis licence fees
 - Toll costs if applicable (e-toll, N-routes)
 
-**Sheet**: `VehicleComparisons` — id, vehicleId, comparisonName, targetVehicle, purchasePrice, financeTerms, projectedKmPerYear, assumptions (JSON), results (JSON), lastRunDate, createdAt
+**Sheet**: `VehicleComparisons` — see schema above under "Google Sheets data model"
 
-**Key functions**:
-- `runReplacementAnalysis(vehicleId, alternatives)` — calculates 10-year TCO projection
-- `renderReplacementReport(vehicleId)` — visual comparison with charts and recommendation
-- `getMaintenanceTrend(vehicleId)` — analyses historical maintenance spend to project future costs
-
-**Key functions to add**:
-- `renderVehicleDash()` — vehicle dashboard with stats, chart, reminders
-- `renderFuelLog()` — fuel history list with calculations
-- `addFuelLog(vehicleId, data)` — add fuel entry, auto-calc km/L and cost/km
-- `renderServiceLog()` — service history + upcoming reminders
-- `checkServiceReminders(vehicleId)` — returns due/overdue reminders
-- `claudeVision(base64, mediaType, prompt, system, max)` — Claude Vision API call (image + text)
-- `resizeImageToBase64(file, maxPx)` — resize image to max dimension, return base64
-- `scanReceipt(base64, mediaType)` — Claude Vision OCR for SA fuel slips → JSON
-- `scanOdometer(base64, mediaType)` — Claude Vision OCR for odo reading → JSON
-- `openReceiptScanner()` — camera trigger → scan receipt → pre-fill fuel form
-- `openOdoScanner()` — camera trigger → scan odometer → fill odo field
-- `openCaptureScanner()` — camera trigger → scan receipt → populate capture textarea
-- `importFuellyCSV()` — file picker → parse Fuelly CSV → bulk import to FuelLogs
-- `calcTCO(vehicleId)` — total cost of ownership calculation
-- `runReplacementAnalysis(vehicleId, alternatives)` — 10-year keep vs replace projection
-- `renderReplacementReport(vehicleId)` — visual comparison chart + AI recommendation
-- `getMaintenanceTrend(vehicleId)` — project future maintenance from historical data
+**Implemented functions**: All vehicle functions are listed in the Key Functions section above. The Economics sub-tab includes:
+- `runReplacementAnalysis(vehicleId)` — sends vehicle data + comparison vehicles to Claude, returns 10-year projection
+- `aiSuggestComparisons()` — AI generates 3 comparison vehicles (direct comparable, practical alternative, cheapest economical option)
+- `renderEconomicsReport(res, keepName, stats)` — multi-line SVG chart (all alternatives with distinct colours), Y-axis grid, tooltips, colour legend, year-by-year table with "Cheapest" column
+- `getMaintenanceTrend(vid)` — linear regression on historical maintenance spend to project future costs
+- `addComparison()` / `delComparison(id)` / `editComparison(id)` — comparison vehicle CRUD
 
 ### 6. Smart Task Management (Productivity Science)
 **Problem**: 100+ tasks, limited hours in a day. Items get lost, nothing feels front-of-mind, overwhelm leads to paralysis.
@@ -537,7 +567,10 @@ Monthly AI-driven analysis: "Should I keep this vehicle or replace it?" 10-year 
 
 ### 12. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
-- Service worker cache: must bump version in `sw.js` on every deploy; users need hard refresh
+- ~~Service worker cache: must bump version in `sw.js` on every deploy~~ — **FIXED**: GitHub Actions auto-injects git SHA on deploy
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)
 - Time blocks from capture don't appear if CORS fails (saved to localStorage, lost on refresh when Sheets overwrites)
 - Journal duplicate entries from double-click
+- Today's Board data stored in localStorage (per-device) — does NOT sync across devices via Sheets yet
+- `calDelete(eventId)` — backend supports `cal_delete` action but no frontend function wraps it yet
+- Legacy GQ_Patrol / GU_Patrol sheets still loaded in `loadAll()` — vestigial, should eventually be removed
