@@ -1969,9 +1969,57 @@ function addExpense(){
   renderVehicles();toast('Expense added: '+formatR(amount));
 }
 
+let editingExpenseId=null;
+
+function editExpense(id){
+  const e=DB.vehicle_expenses.find(e=>String(e.id)===String(id));if(!e)return;
+  editingExpenseId=id;
+  const set=(elId,val)=>{const el=document.getElementById(elId);if(el)el.value=val||'';};
+  set('ex-date',e.date);set('ex-cat',e.category);set('ex-freq',e.frequency||'once');
+  set('ex-desc',e.description);set('ex-amount',e.amount);set('ex-supplier',e.supplier);set('ex-notes',e.notes);
+  // Change button to update
+  const btn=document.querySelector('#ex-save-btn');
+  if(btn){btn.textContent='✓ Update';btn.onclick=()=>updateExpense();}
+  document.getElementById('ex-date')?.scrollIntoView({behavior:'smooth',block:'center'});
+  toast('Editing expense — modify fields above and click Update');
+}
+
+function updateExpense(){
+  if(!editingExpenseId)return;
+  const e=DB.vehicle_expenses.find(e=>String(e.id)===String(editingExpenseId));if(!e)return;
+  const g=id=>document.getElementById(id)?.value||'';
+  e.date=g('ex-date')||e.date;e.category=g('ex-cat')||e.category;e.frequency=g('ex-freq')||'once';
+  e.description=g('ex-desc')||e.description;e.amount=g('ex-amount')||e.amount;
+  e.supplier=g('ex-supplier');e.notes=g('ex-notes');
+  apiPost('update','VehicleExpenses',{id:String(e.id),patch:{date:e.date,category:e.category,frequency:e.frequency,description:e.description,amount:e.amount,supplier:e.supplier,notes:e.notes}});
+  editingExpenseId=null;
+  ['ex-desc','ex-amount','ex-supplier','ex-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();toast('Expense updated');
+}
+
+function cancelEditExpense(){
+  editingExpenseId=null;
+  ['ex-desc','ex-amount','ex-supplier','ex-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderVehicles();
+}
+
 function delExpense(id){
   DB.vehicle_expenses=DB.vehicle_expenses.filter(e=>String(e.id)!==String(id));
   apiPost('delete','VehicleExpenses',{id:String(id)});renderVehicles();toast('Expense deleted');
+}
+
+// Calculate projected recurring expense total (annual equivalent for TCO)
+function getRecurringAnnualCost(vid){
+  const exps=getVehicleExpenses(vid);
+  let annual=0;
+  exps.forEach(e=>{
+    const amt=+e.amount||0;
+    if(e.frequency==='monthly') annual+=amt*12;
+    else if(e.frequency==='quarterly') annual+=amt*4;
+    else if(e.frequency==='annual') annual+=amt;
+    // 'once' expenses are not recurring — already counted in totalExpenses
+  });
+  return annual;
 }
 
 // --- Service CSV Import ---
@@ -2582,6 +2630,21 @@ function renderCostsSub(box,v){
     <div class="veh-stat"><div class="veh-stat-val" style="color:var(--blue)">${stats.annualCost>0?formatR(stats.annualCost)+'/yr':'-'}</div><div class="veh-stat-lbl">Annual avg</div></div>
     <div class="veh-stat"><div class="veh-stat-val" style="color:var(--gold)">${stats.monthlyAvgCost>0?formatR(stats.monthlyAvgCost)+'/mo':'-'}</div><div class="veh-stat-lbl">Monthly avg</div></div>
   </div>`;
+  // Recurring costs summary
+  const recurring=expenses.filter(e=>e.frequency&&e.frequency!=='once');
+  if(recurring.length){
+    const monthlyTotal=recurring.reduce((s,e)=>{const a=+e.amount||0;if(e.frequency==='monthly')return s+a;if(e.frequency==='quarterly')return s+a/3;if(e.frequency==='annual')return s+a/12;return s;},0);
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">🔄 Recurring costs <span style="font-size:11px;color:var(--gold);font-weight:500">${formatR(monthlyTotal)}/mo · ${formatR(monthlyTotal*12)}/yr</span></div>`;
+    recurring.forEach(e=>{
+      const cat=EXP_CATS[e.category]||{emoji:'📦',label:e.category};
+      const monthly=e.frequency==='monthly'?+e.amount:e.frequency==='quarterly'?(+e.amount)/3:e.frequency==='annual'?(+e.amount)/12:0;
+      h+=`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--bg3)">
+        <span>${cat.emoji} ${esc(e.description||cat.label)}</span>
+        <span style="font-family:'DM Mono',monospace;color:var(--t2)">${formatR(e.amount)}/${e.frequency==='monthly'?'mo':e.frequency==='quarterly'?'qtr':'yr'} <span style="color:var(--t3)">(${formatR(monthly)}/mo)</span></span>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
   // Cost breakdown — all categories
   const items=[
     {label:'Purchase',amount:stats.purchasePrice,color:'var(--t3)'},
@@ -2619,7 +2682,7 @@ function renderCostsSub(box,v){
         ${Object.entries(EXP_CATS).map(([k,v2])=>`<option value="${k}">${v2.emoji} ${v2.label}</option>`).join('')}
       </select>
       <select id="ex-freq" style="width:100px">
-        <option value="once">Once-off</option><option value="annual">Annual</option><option value="monthly">Monthly</option>
+        <option value="once">Once-off</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
       </select>
     </div>
     <div class="row" style="margin-bottom:6px">
@@ -2629,7 +2692,8 @@ function renderCostsSub(box,v){
     <div class="row">
       <input id="ex-supplier" placeholder="Supplier / provider" style="flex:1">
       <input id="ex-notes" placeholder="Notes" style="flex:1">
-      <button class="btn btn-primary" onclick="addExpense()">+ Add</button>
+      <button id="ex-save-btn" class="btn btn-primary" onclick="addExpense()">+ Add</button>
+      ${editingExpenseId?`<button class="btn btn-sm" onclick="cancelEditExpense()" style="font-size:10px">✕ Cancel</button>`:''}
     </div>
   </div>`;
   // Expense history
@@ -2643,6 +2707,7 @@ function renderCostsSub(box,v){
         <span style="color:var(--t2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.description||'')}${e.frequency&&e.frequency!=='once'?' <span style="color:var(--t3);font-size:10px">('+e.frequency+')</span>':''}</span>
         <div style="display:flex;align-items:center;gap:4px">
           <span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(e.amount)}</span>
+          <button class="btn-icon" onclick="editExpense('${e.id}')" title="Edit">✏️</button>
           <button class="btn-icon" onclick="delExpense('${e.id}')">🗑</button>
         </div>
       </div>`;
