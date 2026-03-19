@@ -1722,7 +1722,15 @@ function deleteVehicle(id){
   closeModal();renderVehicles();toast('Vehicle deleted');
 }
 
-function closeModal(){document.getElementById('veh-modal').style.display='none';}
+function closeModal(){
+  if(sdActiveVid){
+    sdAutoSave(); // Save current state before closing
+    toast('💾 Service day saved — reopen to continue');
+    sdActiveVid=null;
+  }
+  document.getElementById('veh-modal').style.display='none';
+  document.getElementById('veh-modal-body').style.cssText=''; // Reset modal style
+}
 
 // --- Fuel Log ---
 function addFuelLog(){
@@ -2512,6 +2520,33 @@ function getVehicleChecklist(vid){
   return v.fuelType==='diesel'?JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_DIESEL)):JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_PETROL));
 }
 
+// --- Service Day Auto-Save ---
+let sdAutoSaveTimer=null;
+function sdAutoSave(){
+  clearTimeout(sdAutoSaveTimer);
+  sdAutoSaveTimer=setTimeout(()=>{
+    const modal=document.getElementById('veh-modal');
+    if(modal?.style.display!=='flex')return;
+    const state={};
+    modal.querySelectorAll('input,textarea,select').forEach(el=>{
+      if(!el.id)return;
+      if(el.type==='checkbox') state[el.id]=el.checked;
+      else state[el.id]=el.value;
+    });
+    state._vid=sdActiveVid||'';state._ts=Date.now();
+    LS.set('los_service_day',state);
+  },500);
+}
+function sdRestore(vid){
+  const saved=LS.get('los_service_day',null);
+  if(!saved||saved._vid!==String(vid))return false;
+  // Only restore if less than 24h old
+  if(Date.now()-saved._ts>24*60*60*1000){LS.set('los_service_day',null);return false;}
+  return saved;
+}
+function sdClearSave(){LS.set('los_service_day',null);}
+let sdActiveVid=null;
+
 function sdUpdateTotal(){
   let sum=0;
   document.querySelectorAll('.sd-item-cost').forEach(el=>{sum+=(+el.value||0);});
@@ -2519,6 +2554,7 @@ function sdUpdateTotal(){
   const overrideEl=document.getElementById('sd-cost');
   if(totalEl) totalEl.textContent='R'+sum.toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
   if(overrideEl&&!overrideEl.dataset.manual) overrideEl.value=sum||'';
+  sdAutoSave();
 }
 
 function openServiceDay(vid){
@@ -2603,6 +2639,26 @@ function openServiceDay(vid){
     </div>
   </div>`;
   body.innerHTML=h;modal.style.display='flex';
+  sdActiveVid=String(vid);
+  // Add auto-save listeners to all inputs
+  modal.querySelectorAll('input,textarea,select').forEach(el=>{
+    el.addEventListener('input',sdAutoSave);
+    el.addEventListener('change',sdAutoSave);
+  });
+  // Restore saved state if exists
+  const saved=sdRestore(vid);
+  if(saved){
+    const age=Math.round((Date.now()-saved._ts)/60000);
+    if(confirm(`Resume service day from ${age} minutes ago?`)){
+      modal.querySelectorAll('input,textarea,select').forEach(el=>{
+        if(!el.id||!(el.id in saved))return;
+        if(el.type==='checkbox') el.checked=saved[el.id];
+        else el.value=saved[el.id];
+      });
+      sdUpdateTotal();
+      toast('📋 Restored service day progress');
+    } else { sdClearSave(); }
+  }
 }
 
 function saveServiceDay(vid){
@@ -2665,7 +2721,7 @@ function saveServiceDay(vid){
       }
     });
   });
-  closeModal();renderVehicles();
+  sdClearSave();sdActiveVid=null;closeModal();renderVehicles();
   let msg=`✅ Service logged: ${completed.length} items`;
   if(advanced) msg+=` · ${advanced} reminders advanced`;
   if(todosDone) msg+=` · ${todosDone} todos done`;
@@ -3065,7 +3121,8 @@ function renderFuelSub(box,v){
 function renderServicesSub(box,v){
   const reminders=checkServiceReminders(curVeh);
   const services=getVehicleServices(curVeh);
-  let h=`<div style="margin-bottom:10px"><button class="btn btn-primary" onclick="openServiceDay('${curVeh}')" style="width:100%;padding:12px;font-size:14px">🔧 Start Service Day</button></div>
+  const hasSavedSD=sdRestore(curVeh);
+  let h=`<div style="margin-bottom:10px"><button class="btn btn-primary" onclick="openServiceDay('${curVeh}')" style="width:100%;padding:12px;font-size:14px">${hasSavedSD?'🔧 Resume Service Day (in progress)':'🔧 Start Service Day'}</button></div>
   <div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log service <button class="btn btn-sm" onclick="importServicesCSV()" title="Import from Fuelly services CSV">📥 Import CSV</button></div>
     <div class="row" style="margin-bottom:6px">
       <input id="sl-date" type="date" value="${TODAY}" style="width:130px">
