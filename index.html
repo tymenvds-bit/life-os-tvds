@@ -2058,7 +2058,7 @@ Odometer shows kilometres. Typically 6 digits. Return ONLY JSON — no markdown,
 
 async function openReceiptScanner(){
   const input=document.createElement('input');
-  input.type='file';input.accept='image/*';input.capture='environment';
+  input.type='file';input.accept='image/*';
   input.onchange=async()=>{
     const file=input.files[0];if(!file)return;
     try{
@@ -2082,7 +2082,7 @@ async function openReceiptScanner(){
 
 async function openOdoScanner(){
   const input=document.createElement('input');
-  input.type='file';input.accept='image/*';input.capture='environment';
+  input.type='file';input.accept='image/*';
   input.onchange=async()=>{
     const file=input.files[0];if(!file)return;
     try{
@@ -2098,24 +2098,73 @@ async function openOdoScanner(){
 // --- Capture Tab Receipt Scanner ---
 async function openCaptureScanner(){
   const input=document.createElement('input');
-  input.type='file';input.accept='image/*';input.capture='environment';
+  input.type='file';input.accept='image/*';input.multiple=true;
   input.onchange=async()=>{
-    const file=input.files[0];if(!file)return;
-    try{
-      const base64=await resizeImageToBase64(file,1024);
-      const data=await scanReceipt(base64,file.type||'image/jpeg');
-      // Build text for capture textarea from scanned data
-      const parts=[];
-      if(data.station_name)parts.push(data.station_name);
-      if(data.litres)parts.push(data.litres+'L');
-      if(data.price_per_litre)parts.push('R'+data.price_per_litre+'/L');
-      if(data.total_cost)parts.push('total R'+data.total_cost);
-      if(data.date)parts.push(data.date);
-      if(data.fuel_type)parts.push(data.fuel_type);
-      const capInput=document.getElementById('cap-input');
-      if(capInput)capInput.value=(capInput.value?capInput.value+'\n':'')+'Fuel: '+parts.join(', ');
-      toast('✅ Receipt scanned — click ⛽ Fuel Slip to process');
-    }catch(e){console.error('Capture scan error:',e);toast('Could not read receipt — type the details instead');}
+    const files=[...input.files];if(!files.length)return;
+    toast(`📷 Scanning ${files.length} photo${files.length>1?'s':''}…`);
+    // Build vehicle list for AI
+    const vehList=(DB.vehicles||[]).map(v=>`${v.name} (${v.regNumber||'no reg'}, id:${v.id})`).join(', ');
+    const capLines=[];
+    for(const file of files){
+      try{
+        const base64=await resizeImageToBase64(file,1024);
+        const mt=file.type||'image/jpeg';
+        const prompt=`Analyse this vehicle-related photo. It could be a fuel receipt, odometer reading, service sticker, weighbridge ticket, or other vehicle document.
+
+Known vehicles: ${vehList}
+
+Return ONLY valid JSON with the fields that apply:
+{"type":"receipt|odometer|service_sticker|weighbridge|other",
+"vehicle_match":"vehicle name if reg plate visible or identifiable",
+"registration":"plate number if visible",
+"odometer":number_or_null,
+"next_service_km":number_or_null,
+"receipt":{"date":"YYYY-MM-DD","station":"","fuel_type":"","litres":0,"price_per_l":0,"total":0,"payment":""},
+"weight_kg":number_or_null,
+"notes":"any other useful info extracted",
+"confidence":"high/medium/low"}
+Return ONLY JSON — no markdown, no code fences.`;
+        const raw=await claudeVision(base64,mt,prompt,'',400);
+        const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+        const data=JSON.parse(clean);
+        // Build capture text from extracted data
+        const parts=[];
+        if(data.vehicle_match)parts.push(`Vehicle: ${data.vehicle_match}`);
+        if(data.registration)parts.push(`Reg: ${data.registration}`);
+        if(data.odometer)parts.push(`ODO: ${data.odometer}km`);
+        if(data.next_service_km)parts.push(`Next service: ${data.next_service_km}km`);
+        if(data.receipt){
+          const r=data.receipt;
+          if(r.station)parts.push(r.station);
+          if(r.litres)parts.push(r.litres+'L');
+          if(r.price_per_l)parts.push('R'+r.price_per_l+'/L');
+          if(r.total)parts.push('total R'+r.total);
+          if(r.date)parts.push(r.date);
+          if(r.fuel_type)parts.push(r.fuel_type);
+        }
+        if(data.weight_kg)parts.push(`Weight: ${data.weight_kg}kg`);
+        if(data.notes)parts.push(data.notes);
+        capLines.push(`[${data.type||'photo'}] ${parts.join(', ')} (${data.confidence})`);
+        // Cross-check service reminders if next_service_km found
+        if(data.next_service_km&&data.vehicle_match){
+          const matchV=(DB.vehicles||[]).find(v=>v.name&&data.vehicle_match.toLowerCase().includes(v.name.toLowerCase().split(' ')[0]));
+          if(matchV){
+            const reminders=(DB.service_reminders||[]).filter(r=>String(r.vehicleId)===String(matchV.id)&&r.isActive!=='0');
+            const nextDueKms=reminders.filter(r=>+r.nextDueOdo).map(r=>({name:r.name,km:+r.nextDueOdo}));
+            const stickerKm=data.next_service_km;
+            const nearest=nextDueKms.sort((a,b)=>a.km-b.km)[0];
+            if(nearest&&Math.abs(nearest.km-stickerKm)>500){
+              capLines.push(`⚠️ Service sticker says ${stickerKm}km but app's nearest reminder "${nearest.name}" is at ${nearest.km}km`);
+            } else if(nearest){
+              capLines.push(`✅ Service sticker ${stickerKm}km matches app reminder "${nearest.name}" at ${nearest.km}km`);
+            }
+          }
+        }
+      }catch(e){console.error('Capture scan error:',e);capLines.push(`[error] Could not read photo: ${file.name}`);}
+    }
+    const capInput=document.getElementById('cap-input');
+    if(capInput)capInput.value=(capInput.value?capInput.value+'\n':'')+capLines.join('\n');
+    toast(`✅ ${files.length} photo${files.length>1?'s':''} scanned — review and process`);
   };
   input.click();
 }
@@ -2643,6 +2692,15 @@ function addVehicleCheck(type){
   const entry={id:uid(),vehicleId:String(curVeh),date,odometer:odo,checkType:type,data:JSON.stringify(data),notes:notes||'',createdAt:niso()};
   DB.vehicle_checks.unshift(entry);apiPost('append','VehicleChecks',{row:entry});
   renderVehicles();toast(type+' check logged');
+}
+
+function addWeightCheck(){
+  if(!curVeh){toast('Select a vehicle first');return;}
+  const g=id=>document.getElementById(id)?.value||'';
+  const weight=+g('ck-wt-kg');if(!weight){toast('Enter weight in kg');return;}
+  const entry={id:uid(),vehicleId:String(curVeh),date:g('ck-wt-date')||TODAY,odometer:g('ck-wt-odo'),checkType:'weight',data:JSON.stringify({weight}),notes:g('ck-wt-notes')||'',createdAt:niso()};
+  DB.vehicle_checks.unshift(entry);apiPost('append','VehicleChecks',{row:entry});
+  renderVehicles();toast('Weight check logged');
 }
 
 function delVehicleCheck(id){
@@ -3652,16 +3710,17 @@ function renderVehicleDash(box,v){
   // Specs card
   const hasSpecs=v.oilSpec||v.oilCapacityL||v.coolantType||v.coolantCapacityL||v.brakeFluidType||v.transFluidType||v.diffFluidType||v.tyreSize||v.tyrePressureFront||v.tyrePressureRear||v.tyrePressureSpare;
   if(hasSpecs){
-    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">📋 Specs</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">`;
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">📋 Specs <span style="cursor:pointer;font-size:11px;color:var(--blue);font-weight:400" onclick="openVehicleForm('${v.id}')">✏️ Edit</span></div><div style="display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:12px">`;
     if(v.oilSpec)h+=`<span style="color:var(--t3)">Oil:</span><span>${esc(v.oilSpec)}${v.oilCapacityL?' ('+v.oilCapacityL+'L)':''}</span>`;
     if(v.coolantType)h+=`<span style="color:var(--t3)">Coolant:</span><span>${esc(v.coolantType)}${v.coolantCapacityL?' ('+v.coolantCapacityL+'L)':''}</span>`;
     if(v.brakeFluidType)h+=`<span style="color:var(--t3)">Brake fluid:</span><span>${esc(v.brakeFluidType)}</span>`;
     if(v.transFluidType)h+=`<span style="color:var(--t3)">Trans fluid:</span><span>${esc(v.transFluidType)}</span>`;
     if(v.diffFluidType)h+=`<span style="color:var(--t3)">Diff fluid:</span><span>${esc(v.diffFluidType)}</span>`;
     if(v.tyreSize)h+=`<span style="color:var(--t3)">Tyre size:</span><span>${esc(v.tyreSize)}</span>`;
-    if(v.tyrePressureFront)h+=`<span style="color:var(--t3)">Tyre pressure F:</span><span>${esc(v.tyrePressureFront)}</span>`;
-    if(v.tyrePressureRear)h+=`<span style="color:var(--t3)">Tyre pressure R:</span><span>${esc(v.tyrePressureRear)}</span>`;
-    if(v.tyrePressureSpare)h+=`<span style="color:var(--t3)">Tyre pressure S:</span><span>${esc(v.tyrePressureSpare)}</span>`;
+    if(v.tyrePressureFront)h+=`<span style="color:var(--t3)">Tyre pressure F:</span><span>${esc(v.tyrePressureFront)} bar</span>`;
+    if(v.tyrePressureRear)h+=`<span style="color:var(--t3)">Tyre pressure R:</span><span>${esc(v.tyrePressureRear)} bar</span>`;
+    if(v.tyrePressureSpare)h+=`<span style="color:var(--t3)">Tyre pressure S:</span><span>${esc(v.tyrePressureSpare)} bar</span>`;
+    if(v.notes)h+=`<span style="color:var(--t3)">Notes:</span><span>${esc(v.notes)}</span>`;
     h+=`</div></div>`;
   }
   // Modification log
@@ -4504,6 +4563,33 @@ function renderChecksSub(box,v){
     });
     h+=`</div>`;
   }
+  // Weight check
+  const weightChecks=getVehicleChecks(curVeh,'weight');
+  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">⚖️ Weight Check</div>
+    <div class="row" style="margin-bottom:6px">
+      <input id="ck-wt-date" type="date" value="${TODAY}" style="width:130px">
+      <input id="ck-wt-odo" type="number" placeholder="Odometer" value="${v.currentOdo?Number(v.currentOdo):''}" style="width:130px">
+      <input id="ck-wt-kg" type="number" step="1" placeholder="Weight (kg)" style="width:120px">
+      <input id="ck-wt-notes" placeholder="Notes (e.g. loaded/empty, axle weights)" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addWeightCheck()">+ Add</button>
+    </div>
+  </div>`;
+  if(weightChecks.length){
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Weight history (${weightChecks.length})</div>`;
+    weightChecks.forEach(c=>{
+      let d={};try{d=JSON.parse(c.data||'{}');}catch{}
+      h+=`<div class="log-row" style="grid-template-columns:80px 1fr auto">
+        <span style="font-size:11px;color:var(--t3);font-family:'DM Mono',monospace">${c.date||''}</span>
+        <div style="font-size:12px">
+          <b>${d.weight||'?'} kg</b>
+          ${c.odometer?`<span style="color:var(--t3);margin-left:8px">${Number(c.odometer).toLocaleString()}km</span>`:''}
+          ${c.notes?`<span style="color:var(--t3);margin-left:8px">${esc(c.notes)}</span>`:''}
+        </div>
+        <button class="btn-icon" onclick="delVehicleCheck('${c.id}')">🗑</button>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
   // Tyre rotation history
   const rotations=getTyreRotations(curVeh);
   if(rotations.length){
@@ -4585,6 +4671,7 @@ function renderVehicleTodosSub(box,v){
           <span style="${isDone?'text-decoration:line-through;':''}">${esc(t.description)}</span>
           ${t.partNumber?`<span style="font-size:10px;color:var(--blue);margin-left:6px;font-family:'DM Mono',monospace">🔩 ${esc(t.partNumber)}</span>`:''}
           <span style="font-size:10px;color:var(--t3);margin-left:6px">${catInfo}</span>
+          ${isDone&&t.completedDate?`<span style="font-size:10px;color:var(--t3);margin-left:6px;font-family:'DM Mono',monospace">✓ ${t.completedDate}</span>`:''}
           ${t.notes?`<div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(t.notes)}</div>`:''}
         </div>
         <button class="btn-icon" onclick="delVehicleTodo('${t.id}')">🗑</button>
