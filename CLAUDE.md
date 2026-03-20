@@ -20,9 +20,9 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Tab | Sheet(s) | Description |
 |-----|----------|-------------|
-| Dashboard | — | Command centre: 3-column grid with Today's Board (pinnable AI-picked tasks), Schedule Today, Priority Tasks, Overdue list, Time accountability, Vehicle Services Due widget, Status (waiting/in-progress), Stale task alerts. Default landing tab. |
-| Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), Email Briefing, Quick Add Task, 📷 Scan Slip (Claude Vision OCR) |
-| Tasks | Todos | Task manager with statuses (open/in-progress/waiting/done), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown, "What should I do next?" AI button |
+| Dashboard | — | Command centre: 3-column grid with Today's Board (pinnable AI-picked tasks), Schedule Today, Priority Tasks, Overdue list, Time accountability, Momentum (streak, weekly chart, Eisenhower breakdown), Vehicle Services Due widget, Status (waiting/in-progress), Stale task alerts. Default landing tab. |
+| Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), 🎙️ Voice Capture (SpeechRecognition API), Email Briefing, Quick Add Task, 📷 Scan Slip (Claude Vision OCR) |
+| Tasks | Todos | Task manager with statuses (open/in-progress/waiting/done), Eisenhower auto-classification (DO/SCHEDULE/DELEGATE/ELIMINATE), energy tags (high/medium/low), context tags (office/factory/calls/email/home/errands/computer/anywhere), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown, "What should I do next?" AI button, Weekly Review |
 | Notes | Notes | Freeform notes with categories, tags, detail view with edit/delete |
 | Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
 | Journal | Journal | Daily journal with mood tracking (1-5), sidebar list, detail view |
@@ -130,8 +130,8 @@ Think about every change like a senior developer shipping a personal product the
 
 | Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
 |----------|-------------------|---------|------------|-------------------|
-| `index.html` lines | ~5,330 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
-| `index.html` size (KB) | ~345 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| `index.html` lines | ~5,490 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~360 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
 | Google Sheets (total) | 22 (20 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
 | Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
 | localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
@@ -179,14 +179,16 @@ wc -c index.html  # Bytes
 
 **Capture & AI:**
 - `capture(mode)` — AI-powered natural language capture (modes: `standard`, `eod`, `whatsapp`, `fuel`)
+- `toggleVoiceCapture()` — browser SpeechRecognition API for hands-free voice input (en-ZA, continuous, interim results)
 - `buildPreview(parsed)` / `collectPreviewEdits()` / `removePreviewItem(section, index)` — preview system
 - `commitCapture()` — saves all captured items; routes to task_updates, todos, notes, time, journal, fuel, calendar
 - `emailFetch(max)` / `emailBriefing()` / `emailToTask(title)` — email triage system
 - `quickAdd()` — quick task add from Capture tab
-- `aiNextTask()` — "What should I do next?" AI recommendation
+- `aiNextTask()` — "What should I do next?" AI recommendation (considers Eisenhower, energy, context, time of day)
+- `aiWeeklyReview()` — AI-powered weekly review: completed tasks, focus recommendations, stale/overdue decisions, work-life balance
 
 **Dashboard:**
-- `renderDashboard()` — 3-column grid: Today's Board, Schedule, Priority Tasks, Overdue, Time, Vehicle Services Due, Status, Stale
+- `renderDashboard()` — 3-column grid: Today's Board, Schedule, Priority Tasks, Overdue, Time, Momentum (streak + weekly chart + Eisenhower breakdown), Vehicle Services Due, Status, Stale
 - `loadTodayBoard()` / `commitToday(id)` / `uncommitToday(id)` / `isOnBoard(id)` / `boardToggle(id)` — Today's Board management (persists to Sheets via `TodayBoard` localStorage key)
 - `dashToggle(id)` — toggle task done from dashboard
 - `renderSuggestions()` — AI suggestions panel
@@ -195,6 +197,8 @@ wc -c index.html  # Bytes
 - `cycleStatus(id)` / `setTaskStatus(id, status)` / `toggleTodo(id)` — task status management
 - `addProgress(id)` — add timestamped progress note
 - `getStatus(t)` / `isOverdue(t)` / `isStale(t)` — status helpers
+- `getEisenhower(t)` — returns Eisenhower quadrant (DO/SCHEDULE/DELEGATE/ELIMINATE) based on priority + due date
+- `updateTaskField(id, field, value)` — generic task field updater (for energy, context, etc.)
 - `deleteTodo(id)` / `expandTodo(id)` / `updateDue(id, newDue)` — task CRUD
 
 **Vehicle Module (full fleet manager):**
@@ -319,6 +323,8 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 
 ## Future Development Roadmap
 
+**Next up: Compliance Calendar & Team Visibility** (Roadmap item #2) — business-critical, time-sensitive.
+
 ### 1. Meal Planning & Kitchen AI (New Module)
 **Context**: Tijmen cooks for 2 at home and handles all meal planning and groceries.
 
@@ -384,7 +390,7 @@ Source: `Tijmen_Voice_Style_Profile.docx` — extracted from 200+ conversations.
 - "Stale item" alerts force decisions on forgotten items
 - The human never has to scroll a 200-item list again
 
-### 4. Voice & Image Capture
+### 4. Voice & Image Capture (Voice: ✅ COMPLETE, Image: ✅ COMPLETE)
 **Context**: Tijmen is often driving or at a fuel pump — can't type. Needs hands-free and camera-based input.
 
 **Voice capture**:
@@ -605,25 +611,21 @@ AI-driven 10-year TCO projection comparing current vehicle vs multiple alternati
 - `getMaintenanceTrend(vid)` — linear regression on historical maintenance spend to project future costs
 - `addComparison()` / `delComparison(id)` / `editComparison(id)` — comparison vehicle CRUD
 
-### 6. Smart Task Management (Productivity Science)
-**Problem**: 100+ tasks, limited hours in a day. Items get lost, nothing feels front-of-mind, overwhelm leads to paralysis.
+### 6. Smart Task Management (Productivity Science) ✅ COMPLETE
+**Implemented:**
+- **Eisenhower auto-classification** — `getEisenhower(t)` auto-categorises every task as DO/SCHEDULE/DELEGATE/ELIMINATE based on priority + due date. Shown as coloured pill on each task.
+- **Energy tags** — high/medium/low energy per task. AI matches task energy to time-of-day energy.
+- **Context tags** — office/factory/calls/email/home/errands/computer/anywhere. Filterable from Tasks tab.
+- **Enhanced AI Pick** — considers Eisenhower quadrant, energy, context, time of day.
+- **Enhanced "What should I do next?"** — same intelligence: Eisenhower, energy matching, context awareness.
+- **Weekly Review** — AI analyses completed tasks, overdue/stale items, Eisenhower breakdown, time logged. Generates actionable review in modal.
+- **Momentum dashboard** — completion streak, weekly bar chart, Eisenhower breakdown of open tasks.
+- **Task aging & stale detection** — already existed (14+ days untouched → flagged).
+- **Daily Focus List** — already existed (AI Pick + Today's Board).
 
-**Principles to implement** (based on GTD, Eisenhower, time-boxing, cognitive load research):
-
-- **Daily Focus List** — each morning (or night before), AI selects the 3-5 tasks that matter most today based on: urgency, due date, dependencies, energy level, available time. Everything else is "backlog" — visible but not screaming at you.
-- **Eisenhower auto-sort** — AI categorises tasks into: Do Now (urgent+important), Schedule (important, not urgent), Delegate (urgent, not important), Eliminate (neither). Surface only "Do Now" and "Schedule" on the dashboard.
-- **Weekly Review prompt** — every Sunday, AI walks you through: What got done? What's overdue? What should be dropped/delegated? What's the #1 priority this week? Generates a weekly plan.
-- **Task aging & decay** — tasks untouched for 14+ days get flagged: "Still relevant?" Force a decision: reschedule, delegate, or delete. Prevents the 100-item graveyard.
-- **Context batching** — group tasks by context (calls, emails, factory, office, home) so you can batch similar work. "I have 30 min and a phone" → show all call tasks.
-- **Energy matching** — tag tasks by energy required (high/medium/low). Morning = high energy tasks. Post-lunch = low energy admin. AI suggests based on time of day.
-- **Progress momentum** — show streak/completion stats. "You completed 4/5 focus tasks today." Dopamine feedback loop.
-- **"What should I do next?"** button — AI considers: time available, energy level (based on time of day), pending deadlines, context. Returns the single best next action.
-
-### 7. Dashboard Redesign
-**Current**: Basic snapshot with urgent count, open count, time logged, journal status.
-
-**Vision**: A real command centre:
-- **Today's Focus** — AI-curated 3-5 tasks (not the full list)
+### 7. Dashboard Redesign ✅ COMPLETE
+**Implemented across Phases 2-6:**
+- **Today's Focus** — AI-curated 3-5 tasks via AI Pick + Today's Board
 - **Time accountability** — hours logged vs hours available, category split
 - **Upcoming deadlines** — tasks due this week, colour-coded by urgency
 - **Waiting-on list** — tasks in "waiting" status with who you're waiting on and how long

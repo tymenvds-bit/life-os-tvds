@@ -174,6 +174,29 @@ Added to CLAUDE.md and enforced:
 
 ---
 
+## Session: March 20, 2026 (continued) — Voice Capture + Smart Task Management
+
+**What was built:**
+- 🎙️ Voice Capture — mic button in Universal Capture using browser SpeechRecognition API (en-ZA, continuous mode with interim results). Tap to start, tap to stop, text fills textarea, then "Process Everything" as normal. Fallback toast if browser doesn't support it.
+- Eisenhower auto-classification — `getEisenhower(t)` derives DO/SCHEDULE/DELEGATE/ELIMINATE from priority + due date. Shown as coloured pill on every task.
+- Energy tags (high/medium/low) + context tags (office/factory/calls/email/home/errands/computer/anywhere) on tasks. Dropdowns on add form + in expanded task view. Persisted to Sheets.
+- Context filter buttons on Tasks tab (📞📧💻🚗) for batching similar work.
+- Enhanced AI Pick + "What should I do next?" — both now consider Eisenhower quadrant, energy matching to time of day, and task context.
+- 📋 Weekly Review — AI analyses completed tasks, overdue/stale items, time logged, Eisenhower breakdown. Shows actionable review in modal.
+- Momentum section on Dashboard — completion streak (consecutive days with done tasks), weekly bar chart, today's count, Eisenhower breakdown of open tasks.
+
+**Key decisions:**
+- Eisenhower is auto-derived, not manually set. Priority + due date gives enough signal. Reduces friction vs asking user to classify every task.
+- Energy/context are optional — no friction for quick tasks, available for those who want to plan.
+- Weekly review uses the help modal (reuse existing UI) rather than a new modal.
+- Voice capture uses `continuous: true` + `interimResults: true` for real-time feedback.
+
+**Lessons:**
+- SpeechRecognition API is surprisingly good for en-ZA. No external service needed.
+- The Eisenhower matrix adds real value at zero user cost since it's auto-derived. The ELIMINATE tag on low-priority tasks with no due date is a powerful nudge.
+
+---
+
 ## Architecture Snapshot (as of March 20, 2026)
 
 | Component | Technology | Location |
@@ -186,8 +209,8 @@ Added to CLAUDE.md and enforced:
 | Deployment | GitHub Actions → Pages + clasp → Apps Script | `.github/workflows/deploy.yml` |
 | Offline | Service Worker + localStorage | `sw.js` with auto-versioning |
 
-**Total commits:** 85+
-**Total lines of code:** ~5,330 in index.html (single file)
+**Total commits:** 87+
+**Total lines of code:** ~5,490 in index.html (single file)
 **Google Sheets:** 22 active sheets (20 active + 2 legacy)
 **API actions:** 10 (read, ping, append, write, update, delete, upsert, calendar, cal_create, cal_delete, emails)
 **Vehicle sub-tabs:** 9 (Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)

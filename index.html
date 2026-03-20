@@ -330,6 +330,7 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
           <button class="btn btn-sm" onclick="capture('eod')">🌅 End of Day</button>
           <button class="btn btn-sm" onclick="capture('whatsapp')">💬 WhatsApp</button>
           <button class="btn btn-sm" onclick="capture('fuel')">⛽ Fuel Slip</button>
+          <button class="btn btn-sm" onclick="toggleVoiceCapture()" id="voice-btn" title="Voice input — speak to capture">🎙️ Voice</button>
           <button class="btn btn-sm" onclick="openCaptureScanner()" title="Scan fuel receipt with camera">📷 Scan Slip</button>
           <button class="btn btn-sm" onclick="emailBriefing()" id="email-btn" style="border-color:#1a2a4a;color:var(--blue)">📬 Email Briefing</button>
         </div>
@@ -359,10 +360,15 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
           <input id="t-due" type="date" style="width:130px">
           <button class="btn btn-primary" onclick="addTodo()">+ Add</button>
         </div>
+        <div class="row" style="margin-top:4px">
+          <select id="t-energy" style="width:auto"><option value="">⚡ Energy…</option><option value="high">🔴 High focus</option><option value="medium">🟡 Medium</option><option value="low">🟢 Low / admin</option></select>
+          <select id="t-context" style="width:auto"><option value="">📍 Context…</option><option value="office">🏢 Office</option><option value="factory">🏭 Factory</option><option value="calls">📞 Calls</option><option value="email">📧 Email</option><option value="home">🏠 Home</option><option value="errands">🚗 Errands</option><option value="computer">💻 Computer</option><option value="anywhere">📱 Anywhere</option></select>
+        </div>
         <textarea id="t-notes" placeholder="Notes…" rows="2" style="margin-top:6px;min-height:36px"></textarea>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
         <button class="btn btn-ai btn-sm" onclick="aiNextTask()" id="next-btn">🤖 What should I do next?</button>
+        <button class="btn btn-sm" onclick="aiWeeklyReview()" id="review-btn" style="border-color:#1a2a1a">📋 Weekly Review</button>
         <div id="next-suggestion" style="font-size:12px;color:var(--t2);flex:1"></div>
       </div>
       <div class="filters" id="todo-filters">
@@ -378,6 +384,11 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
         <button class="fbtn" onclick="setFilter('vehicle',this)">🚙 Vehicle</button>
         <button class="fbtn" onclick="setFilter('personal',this)">🌿 Personal</button>
         <button class="fbtn" onclick="setFilter('done',this)">✅ Done</button>
+        <span style="width:1px;height:16px;background:var(--b);margin:0 2px"></span>
+        <button class="fbtn" onclick="setFilter('ctx:calls',this)">📞</button>
+        <button class="fbtn" onclick="setFilter('ctx:email',this)">📧</button>
+        <button class="fbtn" onclick="setFilter('ctx:computer',this)">💻</button>
+        <button class="fbtn" onclick="setFilter('ctx:errands',this)">🚗</button>
       </div>
       <div class="list" id="todo-list"></div>
     </div>
@@ -594,6 +605,16 @@ const PRI = {urgent:{c:'#d44',l:'🔴 Urgent'},high:{c:'#c87832',l:'🟠 High'},
 const STATUS = {open:{label:'Open',cls:'status-open'},['in-progress']:{label:'In Progress',cls:'status-in-progress'},waiting:{label:'Waiting',cls:'status-waiting'},done:{label:'Done',cls:'status-done'}};
 const STATUS_ORDER = ['open','in-progress','waiting','done'];
 function getStatus(t){if(t.status && STATUS[t.status]) return t.status; return String(t.done)==='1'?'done':'open';}
+function getEisenhower(t){
+  const urgent=t.priority==='urgent'||(t.due&&t.due<=TODAY);
+  const important=t.priority==='urgent'||t.priority==='high';
+  if(urgent&&important) return {q:'DO',c:'var(--red)',l:'Do now'};
+  if(!urgent&&important) return {q:'SCHEDULE',c:'var(--blue)',l:'Schedule'};
+  if(urgent&&!important) return {q:'DELEGATE',c:'var(--gold)',l:'Delegate'};
+  return {q:'ELIMINATE',c:'var(--t3)',l:'Eliminate?'};
+}
+const ENERGY_ICONS={high:'🔴',medium:'🟡',low:'🟢'};
+const CONTEXT_ICONS={office:'🏢',factory:'🏭',calls:'📞',email:'📧',home:'🏠',errands:'🚗',computer:'💻',anywhere:'📱'};
 function isOverdue(t){return t.due && t.due<TODAY && getStatus(t)!=='done';}
 function isStale(t){
   if(getStatus(t)==='done'||getStatus(t)==='waiting') return false;
@@ -940,6 +961,39 @@ function resizeImageToBase64(file,maxPx=1024){
   });
 }
 
+// ═══ VOICE CAPTURE ═══
+let _voiceRec=null;
+function toggleVoiceCapture(){
+  const btn=document.getElementById('voice-btn');
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Voice input not supported in this browser');return;}
+  if(_voiceRec){_voiceRec.stop();return;}
+  _voiceRec=new SR();
+  _voiceRec.lang='en-ZA';_voiceRec.continuous=true;_voiceRec.interimResults=true;
+  let finalText='';
+  const input=document.getElementById('cap-input');
+  const existing=input.value;
+  _voiceRec.onresult=e=>{
+    let interim='';finalText='';
+    for(let i=0;i<e.results.length;i++){
+      if(e.results[i].isFinal) finalText+=e.results[i][0].transcript+' ';
+      else interim+=e.results[i][0].transcript;
+    }
+    input.value=(existing?existing+'\n':'')+finalText+interim;
+  };
+  _voiceRec.onend=()=>{
+    _voiceRec=null;btn.textContent='🎙️ Voice';btn.style.borderColor='';
+    if(finalText.trim()) input.value=(existing?existing+'\n':'')+finalText.trim();
+  };
+  _voiceRec.onerror=e=>{
+    _voiceRec=null;btn.textContent='🎙️ Voice';btn.style.borderColor='';
+    if(e.error==='not-allowed') toast('Microphone permission denied');
+    else if(e.error!=='aborted') toast('Voice error: '+e.error);
+  };
+  _voiceRec.start();
+  btn.textContent='⏹️ Stop';btn.style.borderColor='var(--red)';
+}
+
 // ═══ CAPTURE ═══
 async function capture(mode='standard'){
   const text=document.getElementById('cap-input').value.trim();
@@ -1238,10 +1292,10 @@ async function commitCapture(){
 function addTodo(){
   const title=document.getElementById('t-title').value.trim();
   if(!title){toast('Enter a title');return;}
-  const t={id:uid(),title,category:document.getElementById('t-cat').value,priority:document.getElementById('t-pri').value,due:document.getElementById('t-due').value,notes:document.getElementById('t-notes').value,done:'0',createdAt:niso(),status:'open',progress:''};
+  const t={id:uid(),title,category:document.getElementById('t-cat').value,priority:document.getElementById('t-pri').value,due:document.getElementById('t-due').value,notes:document.getElementById('t-notes').value,done:'0',createdAt:niso(),status:'open',progress:'',energy:document.getElementById('t-energy').value,context:document.getElementById('t-context').value};
   DB.todos.unshift(t);
   apiPost('append','Todos',{row:t});
-  document.getElementById('t-title').value='';document.getElementById('t-notes').value='';
+  document.getElementById('t-title').value='';document.getElementById('t-notes').value='';document.getElementById('t-energy').value='';document.getElementById('t-context').value='';
   renderTodos();updateStats();toast('Task added');
 }
 function quickAdd(){
@@ -1300,11 +1354,13 @@ async function aiFocus(){
   const alreadyOnBoard=todayBoard.map(String);
   const taskSummary=tasks.map(t=>{
     const st=getStatus(t);const od=isOverdue(t);const stale=isStale(t);const onBoard=alreadyOnBoard.includes(String(t.id));
-    return `- [${t.id}] "${t.title}" [${t.category}, ${t.priority}, ${st}${od?', OVERDUE':''}${stale?', STALE 14+ days':''}${t.due?', due '+t.due:''}${onBoard?', ALREADY ON TODAY BOARD':''}]`;
+    return `- [${t.id}] "${t.title}" [${t.category}, ${t.priority}, ${getEisenhower(t).q}, ${st}${od?', OVERDUE':''}${stale?', STALE 14+ days':''}${t.due?', due '+t.due:''}${t.energy?', energy:'+t.energy:''}${t.context?', ctx:'+t.context:''}${onBoard?', ALREADY ON TODAY BOARD':''}]`;
   }).join('\n');
   const calToday=calEvents.filter(e=>e.date===TODAY).map(e=>`${e.start} ${e.title}`).join(', ');
   const timeLogged=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
-  const prompt=`Here are my ${tasks.length} open tasks:\n${taskSummary}\n\nToday's calendar: ${calToday||'nothing scheduled'}\nTime already logged today: ${Math.round(timeLogged/60)}h ${timeLogged%60}m\nCurrent time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nDay: ${new Date().toLocaleDateString('en-ZA',{weekday:'long'})}\n\nPick my TOP 5-7 focus tasks for today. Prefer tasks NOT already on the board. Consider: overdue items first, then urgent, then high priority, then stale. Factor in available time remaining today.\n\nReturn ONLY a JSON array: [{"id":TASK_ID,"title":"exact task title","reason":"brief why this today"}]\nIMPORTANT: id must be the exact number from square brackets above.`;
+  const hour=new Date().getHours();
+  const energy=hour<12?'high (morning)':hour<14?'medium (midday)':hour<17?'medium (afternoon)':'low (evening)';
+  const prompt=`Here are my ${tasks.length} open tasks:\n${taskSummary}\n\nToday's calendar: ${calToday||'nothing scheduled'}\nTime already logged today: ${Math.round(timeLogged/60)}h ${timeLogged%60}m\nCurrent time: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nDay: ${new Date().toLocaleDateString('en-ZA',{weekday:'long'})}\nEnergy level: ${energy}\n\nPick my TOP 5-7 focus tasks for today. Priority order:\n1. DO NOW (urgent+important) tasks first\n2. Overdue tasks\n3. SCHEDULE tasks that are due soon\n4. Match task energy to current energy level\n5. Prefer tasks NOT already on the board\n6. Stale tasks that need a decision\n\nReturn ONLY a JSON array: [{"id":TASK_ID,"title":"exact task title","reason":"brief why this today"}]\nIMPORTANT: id must be the exact number from square brackets above.`;
   try{
     const raw=await claude(prompt,`You are a productivity assistant. Pick 5-7 focus tasks. Return ONLY valid JSON array, no markdown.`,500);
     const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
@@ -1353,14 +1409,14 @@ async function aiNextTask(){
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Thinking…';
   const tasks=DB.todos.filter(t=>getStatus(t)!=='done'&&getStatus(t)!=='waiting');
   const taskSummary=tasks.slice(0,30).map(t=>{
-    const od=isOverdue(t);const stale=isStale(t);
-    return `- "${t.title}" [${t.priority}${od?', OVERDUE':''}${stale?', STALE':''}${t.due?', due '+t.due:''}]`;
+    const od=isOverdue(t);const stale=isStale(t);const eq=getEisenhower(t);
+    return `- "${t.title}" [${t.priority}, ${eq.q}${od?', OVERDUE':''}${stale?', STALE':''}${t.due?', due '+t.due:''}${t.energy?', energy:'+t.energy:''}${t.context?', context:'+t.context:''}]`;
   }).join('\n');
   const hour=new Date().getHours();
   const energy=hour<12?'high (morning)':hour<14?'medium (midday)':hour<17?'medium (afternoon)':'low (evening)';
   try{
     const raw=await claude(
-      `My open actionable tasks:\n${taskSummary}\n\nTime now: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nEnergy level: ${energy}\n\nPick the ONE best task to do right now. Return ONLY JSON: {"title":"exact task title","reason":"10 words max why"}`,
+      `My open actionable tasks:\n${taskSummary}\n\nTime now: ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}\nEnergy level: ${energy}\n\nRules:\n- Match task energy to current energy level (high-energy tasks in the morning, low-energy admin in the evening)\n- DO NOW tasks before SCHEDULE tasks\n- Overdue tasks get priority\n- Consider context (if task needs calls, it's business hours only)\n\nPick the ONE best task to do right now. Return ONLY JSON: {"title":"exact task title","reason":"10 words max why"}`,
       'You are a productivity coach. Pick ONE task. Return only valid JSON.',200
     );
     const clean=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
@@ -1375,6 +1431,57 @@ async function aiNextTask(){
   btn.disabled=false;btn.innerHTML='🤖 What should I do next?';
 }
 
+async function aiWeeklyReview(){
+  const btn=document.getElementById('review-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Reviewing…';
+  const open=DB.todos.filter(t=>getStatus(t)!=='done');
+  const weekAgo=new Date(Date.now()-7*86400000).toISOString().split('T')[0];
+  const doneThisWeek=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)>=weekAgo);
+  const overdue=open.filter(t=>isOverdue(t));
+  const stale=open.filter(t=>isStale(t));
+  const waiting=open.filter(t=>getStatus(t)==='waiting');
+  const timeThisWeek=DB.time.filter(b=>b.date>=weekAgo).reduce((s,b)=>s+(+b.duration||0),0);
+  const eisCounts={DO:0,SCHEDULE:0,DELEGATE:0,ELIMINATE:0};
+  open.forEach(t=>{const e=getEisenhower(t);eisCounts[e.q]++;});
+  const summary=`WEEKLY REVIEW DATA:
+Completed this week: ${doneThisWeek.length} tasks
+${doneThisWeek.slice(0,10).map(t=>'  ✓ '+t.title).join('\n')}
+
+Open tasks: ${open.length} (${overdue.length} overdue, ${stale.length} stale, ${waiting.length} waiting)
+Eisenhower: ${eisCounts.DO} DO NOW, ${eisCounts.SCHEDULE} SCHEDULE, ${eisCounts.DELEGATE} DELEGATE, ${eisCounts.ELIMINATE} ELIMINATE
+Time logged this week: ${fmtDur(timeThisWeek)}
+
+Top 15 open tasks:
+${open.slice(0,15).map(t=>`- "${t.title}" [${t.priority}, ${getEisenhower(t).q}${isOverdue(t)?', OVERDUE':''}${isStale(t)?', STALE 14d+':''}${t.due?', due '+t.due:''}]`).join('\n')}`;
+
+  try{
+    const raw=await claude(summary,
+      `You are Tijmen's weekly review coach. Be direct, no fluff. Return a short review in this format:
+## This Week
+- What went well (2-3 bullet points from completed tasks)
+- What didn't get done that should have
+
+## Next Week Focus
+- The 3-5 most important tasks to focus on (pick from open list)
+
+## Decisions Needed
+- Any stale/overdue tasks that need a decision: do it, delegate it, or delete it
+
+## Observations
+- One sentence on work-life balance based on time logged and task categories
+
+Keep it under 200 words. Write in second person ("you").`,500);
+    // Show in a modal
+    const modal=document.getElementById('help-modal');
+    document.getElementById('help-modal-body').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="modal-title" style="margin:0">📋 Weekly Review</div><button class="btn btn-sm" onclick="document.getElementById('help-modal').style.display='none'">✕</button></div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(raw)}</div>`;
+    modal.style.display='flex';
+  }catch(e){
+    console.error('Weekly review error:',e);
+    toast('Review failed: '+e.message);
+  }
+  btn.disabled=false;btn.innerHTML='📋 Weekly Review';
+}
+
 function renderTodos(){
   const el=document.getElementById('todo-list');if(!el)return;
   let items=[...DB.todos];
@@ -1385,6 +1492,7 @@ function renderTodos(){
   else if(todoFilter==='waiting') items=items.filter(t=>getStatus(t)==='waiting');
   else if(todoFilter==='overdue') items=items.filter(t=>isOverdue(t));
   else if(todoFilter==='stale') items=items.filter(t=>isStale(t));
+  else if(todoFilter.startsWith('ctx:')) items=items.filter(t=>t.context===todoFilter.slice(4)&&getStatus(t)!=='done');
   else if(todoFilter!=='all') items=items.filter(t=>t.category===todoFilter&&getStatus(t)!=='done');
   items.sort((a,b)=>{
     const ad=getStatus(a)==='done',bd=getStatus(b)==='done';
@@ -1411,6 +1519,8 @@ function renderTodos(){
             ${overdue?'<span class="overdue-tag">🔥 Overdue</span>':''}
             ${isStale(t)?'<span style="background:#55522;color:#555;font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;font-family:\'DM Mono\',monospace">💀 Stale</span>':''}
             ${t.due?`<span style="font-size:10px;color:${overdue?'var(--red)':'var(--t3)'}">Due ${fmtDate(t.due)}</span>`:''}
+            ${!done?`<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${getEisenhower(t).c}18;color:${getEisenhower(t).c};font-weight:600;font-family:'DM Mono',monospace">${getEisenhower(t).q}</span>`:''}
+            ${t.energy?`<span style="font-size:9px">${ENERGY_ICONS[t.energy]||''}</span>`:''}${t.context?`<span style="font-size:9px">${CONTEXT_ICONS[t.context]||''} ${t.context}</span>`:''}
           </div>
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0">
@@ -1425,9 +1535,13 @@ function renderTodos(){
           <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">STATUS:</span>
           ${STATUS_ORDER.map(s=>`<span class="status-pill ${STATUS[s].cls}" style="${s===st?'outline:1px solid currentColor':''};cursor:pointer" onclick="event.stopPropagation();setTaskStatus(${t.id},'${s}')">${STATUS[s].label}</span>`).join('')}
         </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace">DUE:</span>
           <input type="date" value="${t.due||''}" style="width:140px;padding:4px 6px;font-size:11px" onchange="updateDue(${t.id},this.value)">
+          <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;margin-left:6px">ENERGY:</span>
+          <select style="font-size:11px;padding:3px 4px" onchange="updateTaskField(${t.id},'energy',this.value)"><option value="">—</option><option value="high"${t.energy==='high'?' selected':''}>🔴 High</option><option value="medium"${t.energy==='medium'?' selected':''}>🟡 Med</option><option value="low"${t.energy==='low'?' selected':''}>🟢 Low</option></select>
+          <span style="font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;margin-left:6px">CONTEXT:</span>
+          <select style="font-size:11px;padding:3px 4px" onchange="updateTaskField(${t.id},'context',this.value)"><option value="">—</option><option value="office"${t.context==='office'?' selected':''}>🏢 Office</option><option value="factory"${t.context==='factory'?' selected':''}>🏭 Factory</option><option value="calls"${t.context==='calls'?' selected':''}>📞 Calls</option><option value="email"${t.context==='email'?' selected':''}>📧 Email</option><option value="home"${t.context==='home'?' selected':''}>🏠 Home</option><option value="errands"${t.context==='errands'?' selected':''}>🚗 Errands</option><option value="computer"${t.context==='computer'?' selected':''}>💻 Computer</option><option value="anywhere"${t.context==='anywhere'?' selected':''}>📱 Anywhere</option></select>
         </div>
         ${progressEntries.length?`<div class="progress-log"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:4px;font-family:'DM Mono',monospace">Progress Log</div>${progressEntries.map(e=>{const [date,...rest]=e.split(': ');return `<div class="p-entry"><span class="p-date">${esc(date)}</span>${esc(rest.join(': '))}</div>`;}).join('')}</div>`:''}
         <div class="progress-input">
@@ -1445,6 +1559,11 @@ function setTaskStatus(id,status){
   t.status=status;t.done=status==='done'?'1':'0';t.updatedAt=niso();
   apiPost('update','Todos',{id:String(t.id),patch:{status,done:t.done,updatedAt:t.updatedAt}});renderTodos();renderDashboard();updateStats();
   toast('Status → '+STATUS[status].label);
+}
+function updateTaskField(id,field,value){
+  const t=DB.todos.find(t=>String(t.id)==String(id));if(!t)return;
+  t[field]=value;t.updatedAt=niso();
+  apiPost('update','Todos',{id:String(t.id),patch:{[field]:value,updatedAt:t.updatedAt}});
 }
 
 // ═══ NOTES ═══
@@ -4712,6 +4831,44 @@ function renderDashboard(){
   }).join('')}</div>`:'<div style="font-size:11px;color:var(--t3);padding:4px 0">No time logged yet today</div>'}
 </div>
 
+<!-- ═══ MOMENTUM ═══ -->
+${(()=>{
+  // Completion streak: consecutive days with at least 1 task completed
+  let streak=0;
+  for(let d=0;d<30;d++){
+    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
+    const doneOnDay=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
+    if(doneOnDay>0) streak++; else if(d>0) break;
+  }
+  // Weekly completion counts (last 7 days)
+  const weekDays=[];
+  for(let d=6;d>=0;d--){
+    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
+    const c=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
+    weekDays.push({day:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(dt).getDay()],count:c});
+  }
+  const maxC=Math.max(...weekDays.map(d=>d.count),1);
+  // Eisenhower breakdown
+  const eisCounts={DO:0,SCHEDULE:0,DELEGATE:0,ELIMINATE:0};
+  open.forEach(t=>{const e=getEisenhower(t);eisCounts[e.q]++;});
+  const weekTotal=weekDays.reduce((s,d)=>s+d.count,0);
+  return`<div class="dash-section">
+    <div class="dash-section-hdr"><span class="dash-section-title">Momentum</span></div>
+    <div style="display:flex;gap:16px;align-items:center;margin-bottom:8px">
+      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:${streak>=3?'var(--green)':streak>=1?'var(--gold)':'var(--t3)'}">${streak}</div><div style="font-size:10px;color:var(--t3)">day streak</div></div>
+      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--blue)">${weekTotal}</div><div style="font-size:10px;color:var(--t3)">this week</div></div>
+      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--t)">${todayDone}</div><div style="font-size:10px;color:var(--t3)">today</div></div>
+    </div>
+    <div style="display:flex;gap:3px;align-items:flex-end;height:36px;margin-bottom:8px">${weekDays.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="width:100%;background:var(--blue);border-radius:2px;height:${Math.max(2,d.count/maxC*28)}px;opacity:${d.count?1:.2}"></div><div style="font-size:8px;color:var(--t3)">${d.day}</div></div>`).join('')}</div>
+    <div style="display:flex;gap:6px;font-size:10px;flex-wrap:wrap">
+      <span style="color:var(--red)">🔴 Do now: ${eisCounts.DO}</span>
+      <span style="color:var(--blue)">🔵 Schedule: ${eisCounts.SCHEDULE}</span>
+      <span style="color:var(--gold)">🟡 Delegate: ${eisCounts.DELEGATE}</span>
+      <span style="color:var(--t3)">⚪ Eliminate: ${eisCounts.ELIMINATE}</span>
+    </div>
+  </div>`;
+})()}
+
 ${(()=>{
   const urgentReminders=DB.vehicles.flatMap(veh=>checkServiceReminders(veh.id).filter(r=>r.urgency!=='green').map(r=>({...r,vehicleName:getVehicle(veh.id)?.name||'?'})));
   if(!urgentReminders.length)return'';
@@ -4800,6 +4957,7 @@ const HELP={
   capture:{title:'⚡ Capture',sections:[
     {h:'Universal Capture',p:'Type or paste anything — tasks, notes, time entries, fuel logs, journal thoughts. AI parses it into the right categories.'},
     {h:'Modes',p:'<b>Standard</b> — general capture. <b>EOD</b> — end of day review. <b>WhatsApp</b> — paste WhatsApp messages. <b>Fuel</b> — fuel log with vehicle selection.'},
+    {h:'🎙️ Voice',p:'Tap to start voice input via browser Speech Recognition. Speak naturally — text fills the capture box. Tap Stop when done, then Process Everything as usual. Works best on Chrome.'},
     {h:'📷 Scan Slip',p:'Take a photo of a receipt. Claude Vision OCR extracts the data automatically.'},
     {h:'Email Briefing',p:'Fetches your unread emails and creates an AI summary with suggested tasks.'},
     {h:'Quick Add Task',p:'Fast task entry without AI processing — just title, category, priority, due date.'},
@@ -4809,9 +4967,12 @@ const HELP={
     {h:'Task Management',p:'All your tasks in one place. Filter by category, priority, status, or use the search bar.'},
     {h:'Statuses',p:'<b>Open</b> → <b>In Progress</b> → <b>Done</b>. Click the status badge to cycle. <b>Waiting</b> = blocked on someone else.'},
     {h:'Priorities',p:'<b>Urgent</b> (red) → <b>High</b> → <b>Normal</b> → <b>Low</b>. Urgent tasks show on the dashboard.'},
-    {h:'AI: What should I do next?',p:'AI considers your deadlines, priorities, time of day, and energy to recommend one task.'},
+    {h:'Eisenhower Matrix',p:'Each task is auto-classified: <b>DO</b> (urgent+important), <b>SCHEDULE</b> (important, not urgent), <b>DELEGATE</b> (urgent, not important), <b>ELIMINATE</b> (neither). Based on priority and due date.'},
+    {h:'Energy & Context',p:'Tag tasks with energy level (high/medium/low) and context (office, calls, email, errands, etc.). AI uses these to match tasks to your current situation. Filter by context using the 📞📧💻🚗 buttons.'},
+    {h:'AI: What should I do next?',p:'AI considers Eisenhower quadrant, energy matching (morning=high, evening=low), context, deadlines, and priorities to recommend one task.'},
+    {h:'📋 Weekly Review',p:'AI analyses your week: completed tasks, overdue items, stale tasks needing decisions, Eisenhower breakdown, time logged. Generates actionable recommendations.'},
     {h:'Stale Tasks',p:'Tasks untouched for 14+ days get flagged. Review them: do, delegate, or delete.'},
-    {h:'Progress Notes',p:'Click the expand arrow on a task to add timestamped progress notes.'},
+    {h:'Progress Notes',p:'Click the expand arrow on a task to add timestamped progress notes. Also set energy and context from the expanded view.'},
   ]},
   notes:{title:'📝 Notes',sections:[
     {h:'Freeform Notes',p:'Notes with categories and tags. Click a note to view full detail. Edit or delete from the detail view.'},
