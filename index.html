@@ -295,6 +295,7 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
       <div class="stat-pill"><span class="stat-val" style="color:var(--gold)" id="s-tasks">0</span><span class="stat-lbl">Tasks</span></div>
       <div class="stat-pill"><span class="stat-val" style="color:var(--blue)" id="s-hrs">0h</span><span class="stat-lbl">Today</span></div>
       <button class="btn btn-sm" onclick="openHelp()" style="font-size:11px" title="Help & guides">?</button>
+      <button class="btn btn-sm" onclick="openAppWishlist()" style="font-size:11px" title="App wishlist & dev notes">📋</button>
       <button class="btn btn-sm" onclick="openSettings()" style="font-size:11px">⚙</button>
     </div>
   </div>
@@ -2928,7 +2929,7 @@ function addTyre(){
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const brand=g('ty-brand').trim();if(!brand){toast('Enter tyre brand');return;}
-  const entry={id:uid(),vehicleId:String(curVeh),brand,model:g('ty-model'),size:g('ty-size'),dotCode:g('ty-dot'),purchaseDate:g('ty-pdate')||TODAY,purchasePrice:g('ty-price')||'',currentPosition:g('ty-pos')||'Spare 1',initialTread:g('ty-tread')||'8',notes:g('ty-notes'),createdAt:niso()};
+  const entry={id:uid(),vehicleId:String(curVeh),brand,model:g('ty-model'),size:g('ty-size'),dotCode:g('ty-dot'),purchaseDate:g('ty-pdate')||TODAY,purchasePrice:g('ty-price')||'',currentPosition:g('ty-pos')||'Spare 1',initialTread:g('ty-tread')||'8',isActive:'1',notes:g('ty-notes'),createdAt:niso()};
   DB.vehicle_tyres.push(entry);apiPost('append','VehicleTyres',{row:entry});
   ['ty-brand','ty-model','ty-size','ty-dot','ty-price','ty-tread','ty-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   renderVehicles();toast('Tyre added');
@@ -2960,6 +2961,48 @@ function saveTyreEdit(id){
 function delTyre(id){
   DB.vehicle_tyres=DB.vehicle_tyres.filter(t=>String(t.id)!==String(id));
   apiPost('delete','VehicleTyres',{id:String(id)});renderVehicles();toast('Tyre deleted');
+}
+function retireTyre(id){
+  const t=DB.vehicle_tyres.find(t=>String(t.id)===String(id));if(!t)return;
+  if(!confirm(`Retire "${t.brand} ${t.model||''}" at ${t.currentPosition}? It will be marked as off-vehicle.`))return;
+  const patch={isActive:'0',currentPosition:'off'};
+  Object.assign(t,patch);apiPost('update','VehicleTyres',{id:String(id),patch});
+  renderVehicles();toast('Tyre retired');
+}
+function replaceTyre(id){
+  const old=DB.vehicle_tyres.find(t=>String(t.id)===String(id));if(!old)return;
+  const pos=old.currentPosition||'LF';
+  const v=getVehicle(curVeh);
+  const html=`<div class="modal-title">Replace ${esc(old.brand)} ${esc(old.model||'')} at ${esc(pos)}</div>
+    <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Old tyre will be retired. New tyre takes position <b>${esc(pos)}</b>.</p>
+    <div class="row" style="margin-bottom:6px"><input id="rty-brand" placeholder="Brand"><input id="rty-model" placeholder="Model"></div>
+    <div class="row" style="margin-bottom:6px"><input id="rty-size" placeholder="Size" value="${esc(old.size||v?.tyreSize||'')}"><input id="rty-dot" placeholder="DOT code"></div>
+    <div class="row" style="margin-bottom:6px"><input id="rty-pdate" type="date" value="${TODAY}"><input id="rty-price" type="number" placeholder="Price (R)"></div>
+    <div class="row" style="margin-bottom:6px"><input id="rty-tread" type="number" step="0.1" placeholder="Initial tread (mm)" value="8"><input id="rty-notes" placeholder="Notes"></div>
+    <label style="font-size:11px;display:flex;align-items:center;gap:6px;margin-bottom:8px"><input type="checkbox" id="rty-expense" checked> Log cost as vehicle expense</label>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveReplaceTyre('${id}','${pos}')">Replace</button>
+    </div>`;
+  document.getElementById('veh-modal-body').innerHTML=html;
+  document.getElementById('veh-modal').style.display='flex';
+}
+function saveReplaceTyre(oldId,pos){
+  const g=i=>document.getElementById(i)?.value||'';
+  const brand=g('rty-brand').trim();if(!brand){toast('Enter tyre brand');return;}
+  // Retire old tyre
+  const old=DB.vehicle_tyres.find(t=>String(t.id)===String(oldId));
+  if(old){const patch={isActive:'0',currentPosition:'off'};Object.assign(old,patch);apiPost('update','VehicleTyres',{id:String(oldId),patch});}
+  // Add new tyre
+  const entry={id:uid(),vehicleId:String(curVeh),brand,model:g('rty-model'),size:g('rty-size'),dotCode:g('rty-dot'),purchaseDate:g('rty-pdate')||TODAY,purchasePrice:g('rty-price')||'',currentPosition:pos,initialTread:g('rty-tread')||'8',isActive:'1',notes:g('rty-notes'),createdAt:niso()};
+  DB.vehicle_tyres.push(entry);apiPost('append','VehicleTyres',{row:entry});
+  // Optionally log as vehicle expense
+  const price=+(g('rty-price'))||0;
+  if(price>0&&document.getElementById('rty-expense')?.checked){
+    const exp={id:uid(),vehicleId:String(curVeh),date:g('rty-pdate')||TODAY,category:'tyres',description:`Tyre replacement: ${brand} ${g('rty-model')} (${pos})`,amount:String(price),frequency:'once',supplier:'',notes:'',createdAt:niso()};
+    DB.vehicle_expenses.push(exp);apiPost('append','VehicleExpenses',{row:exp});
+  }
+  closeModal();renderVehicles();toast('Tyre replaced');
 }
 function rotateTyres(){
   if(!curVeh){toast('Select a vehicle first');return;}
@@ -4027,17 +4070,32 @@ function renderChecksSub(box,v){
         <button class="btn btn-primary btn-sm" onclick="addTyre()">+ Tyre</button>
       </div>
     </div>`;
-    // All tyres list
-    h+=`<div style="border-top:1px solid var(--b);margin-top:8px;padding-top:8px;font-size:10px;color:var(--t3)">All tyres (${tyres.length}):</div>`;
-    tyres.forEach(t=>{
+    // All tyres list — separate active and retired
+    const activeTyres=tyres.filter(t=>t.isActive!=='0'&&t.currentPosition!=='off');
+    const retiredTyres=tyres.filter(t=>t.isActive==='0'||t.currentPosition==='off');
+    h+=`<div style="border-top:1px solid var(--b);margin-top:8px;padding-top:8px;font-size:10px;color:var(--t3)">Active tyres (${activeTyres.length}):</div>`;
+    activeTyres.forEach(t=>{
       h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--b);font-size:11px">
         <span><b>${esc(t.currentPosition||'?')}</b> ${esc(t.brand)} ${esc(t.model||'')}${t.dotCode?' · DOT '+esc(t.dotCode):''}${t.purchaseDate?' · '+t.purchaseDate:''}</span>
-        <div style="display:flex;gap:2px">
+        <div style="display:flex;gap:2px;flex-shrink:0">
+          <button class="btn-icon" onclick="retireTyre('${t.id}')" title="Retire">🚫</button>
+          <button class="btn-icon" onclick="replaceTyre('${t.id}')" title="Replace">🔄</button>
           <button class="btn-icon" onclick="editTyre('${t.id}')">✏️</button>
           <button class="btn-icon" onclick="delTyre('${t.id}')">🗑</button>
         </div>
       </div>`;
     });
+    if(retiredTyres.length){
+      h+=`<div style="margin-top:10px;font-size:10px;color:var(--t3)">Retired tyres (${retiredTyres.length}):</div>`;
+      retiredTyres.forEach(t=>{
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--b);font-size:11px;opacity:0.5">
+          <span style="text-decoration:line-through"><b>off</b> ${esc(t.brand)} ${esc(t.model||'')}${t.dotCode?' · DOT '+esc(t.dotCode):''}${t.purchaseDate?' · '+t.purchaseDate:''}</span>
+          <div style="display:flex;gap:2px;flex-shrink:0">
+            <button class="btn-icon" onclick="delTyre('${t.id}')">🗑</button>
+          </div>
+        </div>`;
+      });
+    }
     h+=`</div>`;
   }
   // Battery section
@@ -4756,6 +4814,8 @@ async function initApp(){
   checkServiceNotifications();
   // Check backend health — warn if api.gs is outdated
   checkBackendHealth();
+  // App capacity check
+  checkAppCapacity();
 }
 
 const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
@@ -4918,6 +4978,198 @@ function applyTheme(){
 }
 function setSyncBadge(state){const el=document.getElementById('sync-badge');if(!el)return;el.className='sync-badge sync-'+state;el.textContent=state==='ok'?'● synced':state==='pending'?'⟳ syncing':state==='offline'?'◌ offline':'✕ error';}
 function catOptions(sel='prima-ops'){return Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===sel?'selected':''}>${v.emoji} ${v.label}</option>`).join('');}
+// --- Universal AI Assistant ---
+function toggleAiChat(){
+  const chat=document.getElementById('ai-chat');
+  const isOpen=chat.style.display==='flex';
+  chat.style.display=isOpen?'none':'flex';
+  if(!isOpen){
+    const msgs=document.getElementById('ai-chat-msgs');
+    if(!msgs.children.length){
+      msgs.innerHTML='<div style="color:var(--t3);text-align:center;padding:20px;font-size:12px">Ask me anything about your tasks, vehicles, time, expenses...<br><br>Examples:<br>"What\'s my most urgent task?"<br>"How much have I spent on the GQ this year?"<br>"Add new wipers to the GQ todo list"<br>"Log 3 hours of Prima strategy work"</div>';
+    }
+    document.getElementById('ai-chat-input').focus();
+  }
+}
+async function sendAiChat(){
+  const input=document.getElementById('ai-chat-input');
+  const msg=input.value.trim();if(!msg)return;
+  input.value='';
+  const msgs=document.getElementById('ai-chat-msgs');
+  if(msgs.querySelector('div[style*="text-align:center"]')) msgs.innerHTML='';
+  msgs.innerHTML+=`<div style="margin-bottom:8px;text-align:right"><span style="background:var(--gold);color:#000;padding:6px 12px;border-radius:12px 12px 0 12px;display:inline-block;max-width:85%;font-size:13px">${esc(msg)}</span></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  const context=buildAiContext();
+  const prompt=`You are an AI assistant for Life OS, a personal productivity and vehicle management app owned by Tijmen. You have access to his current data summary below.
+
+CURRENT DATA:
+${context}
+
+USER REQUEST: ${msg}
+
+CAPABILITIES you can suggest or help with:
+- Tasks: add, view, prioritize, mark done
+- Vehicles: fuel logs, service reminders, expenses, parts inventory, tyre management, trip logs
+- Time tracking: log time blocks
+- Notes: create, search
+- Journal: write entries
+- Calendar: view events
+
+If the user asks to DO something (add a task, log time, etc), describe exactly what they should do in the app OR provide the data they asked for.
+If the user asks about data, answer with specific numbers from the context.
+If the app doesn't have a feature for their request, say so and suggest they add it to the App Wishlist.
+Be concise — 2-4 sentences max. Use Rands (R) for money. Tijmen's voice: direct, practical.`;
+  msgs.innerHTML+=`<div id="ai-typing" style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;font-size:12px;color:var(--t3)">Thinking...</span></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  try{
+    const response=await claude(prompt,'Concise Life OS assistant. 2-4 sentences max.',500);
+    document.getElementById('ai-typing')?.remove();
+    msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;max-width:85%;font-size:13px;line-height:1.4">${esc(response)}</span></div>`;
+  }catch(e){
+    document.getElementById('ai-typing')?.remove();
+    msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px;display:inline-block;color:var(--red);font-size:12px">Error — check API key in Settings</span></div>`;
+  }
+  msgs.scrollTop=msgs.scrollHeight;
+}
+function buildAiContext(){
+  const openTasks=DB.todos.filter(t=>t.done!=='1'&&t.status!=='done');
+  const urgentTasks=openTasks.filter(t=>t.priority==='urgent');
+  const overdueTasks=openTasks.filter(t=>t.due&&t.due<TODAY);
+  const todayTime=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
+  let ctx=`Tasks: ${openTasks.length} open, ${urgentTasks.length} urgent, ${overdueTasks.length} overdue\n`;
+  ctx+=`Time today: ${Math.round(todayTime)}min logged\n`;
+  DB.vehicles.forEach(v=>{
+    const stats=calcVehicleStats(v.id);
+    const reminders=checkServiceReminders(v.id);
+    const redReminders=reminders.filter(r=>r.urgency==='red');
+    const parts=DB.vehicle_parts.filter(p=>String(p.vehicleId)===String(v.id));
+    const lowStock=parts.filter(p=>(+p.qtyOnHand||0)<=(+p.qtyMin||0));
+    ctx+=`Vehicle "${v.name}": ${stats.currentOdo?.toLocaleString()||'?'}km, ${stats.avgKmL?.toFixed(1)||'?'}km/L, TCO ${formatR(stats.totalCost)}, ${redReminders.length} overdue services`;
+    if(lowStock.length) ctx+=`, ${lowStock.length} parts low stock`;
+    ctx+='\n';
+  });
+  const recentNotes=DB.notes.slice(0,3).map(n=>n.title).join(', ');
+  if(recentNotes) ctx+=`Recent notes: ${recentNotes}\n`;
+  const todayJournal=DB.journal.find(j=>j.date===TODAY);
+  if(todayJournal) ctx+=`Journal today: mood ${todayJournal.mood}/5\n`;
+  const wishlist=LS.get('los_app_wishlist',[]);
+  if(wishlist.length) ctx+=`App wishlist: ${wishlist.length} items\n`;
+  return ctx;
+}
+
+// --- App Wishlist & Dev Notes ---
+function openAppWishlist(){
+  const modal=document.getElementById('help-modal');const body=document.getElementById('help-modal-body');
+  const items=LS.get('los_app_wishlist',[]);
+  const typeEmoji={feature:'✨',bug:'🐛',improvement:'🔧',note:'📝'};
+  const prioColor={high:'var(--red)',medium:'var(--orange)',low:'var(--t3)'};
+  let h=`<div style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">App Wishlist & Dev Notes</h3>
+      <button onclick="document.getElementById('help-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <select id="wish-type" style="padding:8px;border-radius:6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)">
+          <option value="feature">Feature request</option>
+          <option value="bug">Bug report</option>
+          <option value="improvement">Improvement</option>
+          <option value="note">Dev note</option>
+        </select>
+        <select id="wish-priority" style="padding:8px;border-radius:6px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t)">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px">
+        <input id="wish-text" placeholder="Describe the feature, bug, or idea..." style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);font-size:13px" onkeydown="if(event.key==='Enter')addWishlistItem()">
+        <button class="btn btn-primary" onclick="addWishlistItem()" style="padding:8px 16px">+ Add</button>
+      </div>
+    </div>`;
+  if(!items.length){
+    h+=`<div style="text-align:center;color:var(--t3);padding:20px;font-size:12px">No items yet. Add feature requests, bug reports, or development notes here.</div>`;
+  } else {
+    const open=items.filter(i=>!i.done);
+    const done=items.filter(i=>i.done);
+    if(open.length){
+      open.forEach(item=>{
+        const idx=items.indexOf(item);
+        h+=`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--bg3)">
+          <input type="checkbox" onchange="toggleWishlistItem(${idx})" style="margin-top:3px;width:16px;height:16px">
+          <div style="flex:1">
+            <span>${typeEmoji[item.type]||'📝'} ${esc(item.text)}</span>
+            <div style="font-size:10px;color:var(--t3);margin-top:2px">
+              <span style="color:${prioColor[item.priority]||'var(--t3)'}">${item.priority}</span> · ${item.date}
+            </div>
+          </div>
+          <button onclick="delWishlistItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px">🗑</button>
+        </div>`;
+      });
+    }
+    if(done.length){
+      h+=`<div style="margin-top:12px;font-size:11px;color:var(--t3)">Completed (${done.length})</div>`;
+      done.forEach(item=>{
+        const idx=items.indexOf(item);
+        h+=`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;opacity:0.5">
+          <input type="checkbox" checked onchange="toggleWishlistItem(${idx})" style="width:16px;height:16px">
+          <span style="text-decoration:line-through;font-size:12px;flex:1">${typeEmoji[item.type]||'📝'} ${esc(item.text)}</span>
+          <button onclick="delWishlistItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:12px">🗑</button>
+        </div>`;
+      });
+    }
+  }
+  h+=`<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--bg3);font-size:10px;color:var(--t3)">
+    Tip: You can also tell the AI assistant "Add [feature] to wishlist" and it will suggest adding it here.
+  </div></div>`;
+  body.innerHTML=h;modal.style.display='flex';
+}
+function addWishlistItem(){
+  const text=document.getElementById('wish-text')?.value?.trim();
+  if(!text){toast('Enter a description');return;}
+  const type=document.getElementById('wish-type')?.value||'feature';
+  const priority=document.getElementById('wish-priority')?.value||'medium';
+  const items=LS.get('los_app_wishlist',[]);
+  items.unshift({text,type,priority,date:TODAY,done:false});
+  LS.set('los_app_wishlist',items);
+  openAppWishlist();
+  toast('Added to wishlist');
+}
+function toggleWishlistItem(idx){
+  const items=LS.get('los_app_wishlist',[]);
+  if(items[idx]) items[idx].done=!items[idx].done;
+  LS.set('los_app_wishlist',items);
+  openAppWishlist();
+}
+function delWishlistItem(idx){
+  const items=LS.get('los_app_wishlist',[]);
+  items.splice(idx,1);
+  LS.set('los_app_wishlist',items);
+  openAppWishlist();
+}
+function checkAppCapacity(){
+  const lines=document.documentElement.outerHTML.split('\n').length;
+  const lsUsage=new Blob(Object.entries(localStorage).map(([k,v])=>v)).size;
+  const sheetCount=Object.keys(DB).length;
+  const warnings=[];
+  if(lines>7000) warnings.push('Code approaching split threshold: ~'+lines+' lines (split at 7000)');
+  if(lsUsage>3000000) warnings.push('localStorage usage high: '+(lsUsage/1024/1024).toFixed(1)+'MB (limit ~5MB)');
+  if(sheetCount>40) warnings.push('Google Sheets count high: '+sheetCount+' (consider grouping)');
+  if(warnings.length) console.warn('Capacity check:', warnings.join('\n'));
+  return {lines, lsUsage, sheetCount, warnings};
+}
 </script>
+<button id="ai-fab" onclick="toggleAiChat()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:var(--gold);border:none;font-size:24px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:999;transition:transform 0.2s" title="AI Assistant">🤖</button>
+<div id="ai-chat" style="display:none;position:fixed;bottom:86px;right:20px;width:360px;max-width:calc(100vw - 40px);max-height:60vh;background:var(--bg);border:1px solid var(--bg3);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:999;flex-direction:column;overflow:hidden">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--bg3);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-weight:700;font-size:14px">AI Assistant</span>
+    <button onclick="toggleAiChat()" style="background:none;border:none;font-size:16px;cursor:pointer;color:var(--t3)">✕</button>
+  </div>
+  <div id="ai-chat-msgs" style="flex:1;overflow-y:auto;padding:12px;min-height:200px;font-size:13px"></div>
+  <div style="padding:8px 12px;border-top:1px solid var(--bg3);display:flex;gap:6px">
+    <input id="ai-chat-input" placeholder="Ask anything about your data..." style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bg3);background:var(--bg2);color:var(--t);font-size:13px" onkeydown="if(event.key==='Enter')sendAiChat()">
+    <button onclick="sendAiChat()" class="btn btn-primary" style="padding:8px 16px;font-size:13px">Send</button>
+  </div>
+</div>
 </body>
 </html>

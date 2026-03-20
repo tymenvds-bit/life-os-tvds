@@ -82,6 +82,35 @@ Personal life operating system for Tijmen van der Schyff.
 - **Documentation audit**: On every feature change, verify: (1) CLAUDE.md reflects the current state, (2) DEVLOG.md captures the decision/lesson, (3) In-app HELP object is accurate, (4) No redundant/dead features remain.
 - **Help system**: In-app `?` button shows context-sensitive help per tab. Content defined in the `HELP` object in index.html. Must stay in sync with CLAUDE.md.
 
+## Capacity Monitoring
+
+**CHECK EVERY SESSION — update the numbers below and plan ahead when approaching limits.**
+
+| Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
+|----------|-------------------|---------|------------|-------------------|
+| `index.html` lines | ~5,000 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~320 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| Google Sheets (total) | 22 | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
+| Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
+| localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
+| Apps Script daily execution | ~30 calls/day | 10,000 | 20,000 | Batch reads. Cache aggressively. |
+| AI context (editing ability) | ~5,000 lines | 7,000 lines | ~10,000 lines | Split files. Use agents for isolated edits. |
+| Service worker cache | ~10 assets | 50 assets | Browser-dependent | Only cache critical assets. |
+
+**Split strategy when we hit 7,000 lines:**
+1. Extract vehicle module JS → `vehicles.js` (~2,500 lines)
+2. Extract dashboard JS → `dashboard.js` (~500 lines)
+3. Keep core (API, utils, capture, tasks, notes, time, journal, calendar, inventory) in `index.html`
+4. Load via `<script src="vehicles.js"></script>` etc. — no build step needed
+5. Service worker caches the new files
+6. All functions remain global — no module system needed
+
+**How to check current size:**
+```bash
+wc -l index.html  # Lines
+wc -c index.html  # Bytes
+```
+
 ## Project Files
 
 | File | Purpose | Update frequency |
