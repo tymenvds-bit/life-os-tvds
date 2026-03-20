@@ -2251,7 +2251,7 @@ function checkServiceReminders(vid){
 }
 
 // --- Vehicle Expenses ---
-const EXP_CATS={insurance:{emoji:'🛡',label:'Insurance',color:'var(--purple)'},licence:{emoji:'📋',label:'Licence',color:'var(--teal)'},tracker:{emoji:'📍',label:'Tracker',color:'var(--orange)'},tyres:{emoji:'🛞',label:'Tyres',color:'#b8860b'},'co-payment':{emoji:'💳',label:'Co-payment',color:'var(--red)'},parts:{emoji:'🔩',label:'Parts',color:'var(--blue)'},accessories:{emoji:'🎒',label:'Accessories',color:'var(--green)'},tolls:{emoji:'🛣',label:'Tolls',color:'var(--t3)'},other:{emoji:'📦',label:'Other',color:'var(--t2)'}};
+const EXP_CATS={insurance:{emoji:'🛡',label:'Insurance',color:'var(--purple)'},licence:{emoji:'📋',label:'Licence',color:'var(--teal)'},maintenance:{emoji:'🔧',label:'Maintenance',color:'var(--green)'},tracker:{emoji:'📍',label:'Tracker',color:'var(--orange)'},tyres:{emoji:'🛞',label:'Tyres',color:'#b8860b'},'co-payment':{emoji:'💳',label:'Co-payment',color:'var(--red)'},parts:{emoji:'🔩',label:'Parts/Spares',color:'var(--blue)'},accessories:{emoji:'🎒',label:'Accessories',color:'#b8860b'},tolls:{emoji:'🛣',label:'Tolls',color:'var(--t3)'},other:{emoji:'📦',label:'Other',color:'var(--t2)'}};
 
 function addExpense(){
   if(_locks.addExpense)return;
@@ -3519,13 +3519,15 @@ function calcVehicleStats(vid){
     },0);
   };
   const insuranceCost=expByCat('insurance');const licenceCost=expByCat('licence');
+  const maintenanceExpCost=expByCat('maintenance');
   const trackerCost=expByCat('tracker');const tyreCost=expByCat('tyres');
   const coPaymentCost=expByCat('co-payment');
+  const partsCost=expByCat('parts');const accessoriesCost=expByCat('accessories');
   // Include incident co-payments (from Incidents sheet, not just expenses)
   const incidents=getIncidents(vid);
   const incidentCoPay=incidents.reduce((s,i)=>s+(+i.coPayment||+i.totalCost||0),0);
-  const otherExpCost=expByCat('parts')+expByCat('accessories')+expByCat('tolls')+expByCat('other');
-  const totalExpenses=insuranceCost+licenceCost+trackerCost+tyreCost+coPaymentCost+incidentCoPay+otherExpCost;
+  const otherExpCost=expByCat('tolls')+expByCat('other');
+  const totalExpenses=insuranceCost+licenceCost+maintenanceExpCost+trackerCost+tyreCost+coPaymentCost+incidentCoPay+partsCost+accessoriesCost+otherExpCost;
   const purchasePrice=+(v?.purchasePrice||0);
   const totalCost=purchasePrice+totalFuelCost+totalServiceCost+totalExpenses;
   const purchaseOdo=+(v?.purchaseOdo||0);const currentOdo=+(v?.currentOdo||0);
@@ -3540,7 +3542,7 @@ function calcVehicleStats(vid){
   const monthlyAvgCost=monthsOwned>0?totalCost/monthsOwned:0;
   // Annual km estimate from actual usage
   const annualKm=+(v?.annualKmEstimate||0)||(yearsOwned>0.25?totalKm/yearsOwned:0);
-  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,totalExpenses,insuranceCost,licenceCost,trackerCost,tyreCost,coPaymentCost,incidentCoPay,otherExpCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo,monthsOwned,yearsOwned,annualCost,monthlyAvgCost,annualKm};
+  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,totalExpenses,insuranceCost,licenceCost,maintenanceExpCost,trackerCost,tyreCost,coPaymentCost,incidentCoPay,partsCost,accessoriesCost,otherExpCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo,monthsOwned,yearsOwned,annualCost,monthlyAvgCost,annualKm};
 }
 
 // --- Render ---
@@ -3991,12 +3993,14 @@ function renderCostsSub(box,v){
   const items=[
     {label:'Purchase',amount:stats.purchasePrice,color:'var(--t3)'},
     {label:'Fuel',amount:stats.totalFuelCost,color:'var(--blue)'},
-    {label:'Maintenance',amount:stats.totalServiceCost,color:'var(--green)'},
+    {label:'🔧 Maintenance',amount:stats.totalServiceCost+stats.maintenanceExpCost,color:'var(--green)'},
     {label:'🛡 Insurance',amount:stats.insuranceCost,color:'var(--purple)'},
     {label:'📋 Licence',amount:stats.licenceCost,color:'var(--teal)'},
     {label:'📍 Tracker',amount:stats.trackerCost,color:'var(--orange)'},
     {label:'🛞 Tyres',amount:stats.tyreCost,color:'#b8860b'},
     {label:'💳 Co-payment',amount:stats.coPaymentCost+stats.incidentCoPay,color:'var(--red)'},
+    {label:'🔩 Parts/Spares',amount:stats.partsCost,color:'var(--blue)'},
+    {label:'🎒 Accessories',amount:stats.accessoriesCost,color:'var(--pink)'},
     {label:'📦 Other',amount:stats.otherExpCost,color:'var(--t2)'},
   ].filter(i=>i.amount>0);
   const maxAmt=Math.max(...items.map(i=>i.amount),1);
