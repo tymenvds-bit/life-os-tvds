@@ -11,8 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
-:root,html[data-theme="dark"]{--bg:#0d0d0d;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--b:#242424;--b2:#2e2e2e;--t:#e8e8e8;--t2:#999;--t3:#555;--gold:#c9a84c;--gold2:#e8c96b;--red:#d44;--orange:#c87832;--blue:#4a8ab5;--green:#5a9060;--pink:#b55a7a;--teal:#3a8a8a;--r:8px;--rl:12px}
-html[data-theme="light"]{--bg:#f4f4f5;--bg1:#fff;--bg2:#fafafa;--bg3:#f0f0f0;--b:#e0e0e0;--b2:#d0d0d0;--t:#1a1a1a;--t2:#555;--t3:#999;--gold:#b8922e;--gold2:#9a7a20;--red:#c33;--orange:#b06a28;--blue:#3a7aa5;--green:#4a8050;--pink:#a5406a;--teal:#2a7a7a;--r:8px;--rl:12px}
+:root,html[data-theme="dark"]{--bg:#0d0d0d;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--b:#242424;--b2:#2e2e2e;--t:#e8e8e8;--t2:#999;--t3:#555;--gold:#c9a84c;--gold2:#e8c96b;--red:#d44;--orange:#c87832;--blue:#4a8ab5;--green:#5a9060;--pink:#b55a7a;--purple:#8a5ab5;--teal:#3a8a8a;--r:8px;--rl:12px}
+html[data-theme="light"]{--bg:#f4f4f5;--bg1:#fff;--bg2:#fafafa;--bg3:#f0f0f0;--b:#e0e0e0;--b2:#d0d0d0;--t:#1a1a1a;--t2:#555;--t3:#999;--gold:#b8922e;--gold2:#9a7a20;--red:#c33;--orange:#b06a28;--blue:#3a7aa5;--green:#4a8050;--pink:#a5406a;--purple:#7a4aa5;--teal:#2a7a7a;--r:8px;--rl:12px}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--t);font-family:'DM Sans',sans-serif;font-size:14px;overflow:hidden}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px}
@@ -3521,8 +3521,11 @@ function calcVehicleStats(vid){
   const insuranceCost=expByCat('insurance');const licenceCost=expByCat('licence');
   const trackerCost=expByCat('tracker');const tyreCost=expByCat('tyres');
   const coPaymentCost=expByCat('co-payment');
+  // Include incident co-payments (from Incidents sheet, not just expenses)
+  const incidents=getIncidents(vid);
+  const incidentCoPay=incidents.reduce((s,i)=>s+(+i.coPayment||+i.totalCost||0),0);
   const otherExpCost=expByCat('parts')+expByCat('accessories')+expByCat('tolls')+expByCat('other');
-  const totalExpenses=insuranceCost+licenceCost+trackerCost+tyreCost+coPaymentCost+otherExpCost;
+  const totalExpenses=insuranceCost+licenceCost+trackerCost+tyreCost+coPaymentCost+incidentCoPay+otherExpCost;
   const purchasePrice=+(v?.purchasePrice||0);
   const totalCost=purchasePrice+totalFuelCost+totalServiceCost+totalExpenses;
   const purchaseOdo=+(v?.purchaseOdo||0);const currentOdo=+(v?.currentOdo||0);
@@ -3537,7 +3540,7 @@ function calcVehicleStats(vid){
   const monthlyAvgCost=monthsOwned>0?totalCost/monthsOwned:0;
   // Annual km estimate from actual usage
   const annualKm=+(v?.annualKmEstimate||0)||(yearsOwned>0.25?totalKm/yearsOwned:0);
-  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,totalExpenses,insuranceCost,licenceCost,trackerCost,tyreCost,coPaymentCost,otherExpCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo,monthsOwned,yearsOwned,annualCost,monthlyAvgCost,annualKm};
+  return{avgKmL,lastKmL,bestKmL,totalFuelCost,totalServiceCost,totalExpenses,insuranceCost,licenceCost,trackerCost,tyreCost,coPaymentCost,incidentCoPay,otherExpCost,purchasePrice,totalCost,totalKm,costPerKm,fuelCostPerKm,fillUps:fuel.length,currentOdo,monthsOwned,yearsOwned,annualCost,monthlyAvgCost,annualKm};
 }
 
 // --- Render ---
@@ -3902,7 +3905,7 @@ function renderServicesSub(box,v){
     <div class="row"><button class="btn btn-primary" onclick="addIncident()">+ Log Incident</button></div>`;
   if(incidents.length){
     incidents.forEach(i=>{
-      const resolved=i.isResolved==='1';
+      const resolved=i.resolved===true||i.resolved==='true'||i.isResolved==='1'||i.isResolved===true;
       const incBg=resolved?'#0a1a0a22':'#1a080822';
       const incColor=resolved?'var(--green)':'var(--red)';
       h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto;margin-top:6px">
@@ -3914,7 +3917,7 @@ function renderServicesSub(box,v){
           ${i.notes?`<div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(i.notes)}</div>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:4px">
-          ${i.cost&&+i.cost?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(i.cost)}</span>`:''}
+          ${(+i.totalCost||+i.coPayment||+i.cost)?`<span style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace">${formatR(+i.totalCost||+i.coPayment||+i.cost)}</span>`:''}
           <button class="btn-icon" onclick="delIncident('${i.id}')">🗑</button>
         </div>
       </div>`;
@@ -3993,7 +3996,7 @@ function renderCostsSub(box,v){
     {label:'📋 Licence',amount:stats.licenceCost,color:'var(--teal)'},
     {label:'📍 Tracker',amount:stats.trackerCost,color:'var(--orange)'},
     {label:'🛞 Tyres',amount:stats.tyreCost,color:'#b8860b'},
-    {label:'💳 Co-payment',amount:stats.coPaymentCost,color:'var(--red)'},
+    {label:'💳 Co-payment',amount:stats.coPaymentCost+stats.incidentCoPay,color:'var(--red)'},
     {label:'📦 Other',amount:stats.otherExpCost,color:'var(--t2)'},
   ].filter(i=>i.amount>0);
   const maxAmt=Math.max(...items.map(i=>i.amount),1);
