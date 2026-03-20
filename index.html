@@ -1767,7 +1767,9 @@ function addFuelLog(){
   const g=id=>document.getElementById(id)?.value||'';
   const date=g('fl-date')||TODAY;
   const odo=+g('fl-odo');const litres=+g('fl-litres');const totalCost=+g('fl-cost');
-  if(!odo||!litres||!totalCost){toast('Fill in ODO, litres and cost');return;}
+  if(!odo){toast('Enter odometer reading');return;}
+  if(!litres){toast('Enter litres');return;}
+  if(!totalCost){toast('Enter total cost');return;}
   const pricePerL=totalCost/litres;
   const fuel=getVehicleFuel(curVeh);
   const prevOdo=fuel.length?+fuel[0].odometer:0;
@@ -1783,7 +1785,9 @@ function addFuelLog(){
 }
 
 function delFuelLog(id){
-  DB.fuel_logs=DB.fuel_logs.filter(f=>String(f.id)!==String(id));
+  const f=DB.fuel_logs.find(f2=>String(f2.id)===String(id));
+  if(!confirm(`Delete fuel log?\n\n${f?.date||'?'} · ${f?.odometer||'?'}km · ${f?.litres||'?'}L${f?.station?' @ '+f.station:''}\n${f?.totalCost?formatR(f.totalCost):''}`))return;
+  DB.fuel_logs=DB.fuel_logs.filter(f2=>String(f2.id)!==String(id));
   apiPost('delete','FuelLogs',{id:String(id)});renderVehicles();toast('Fuel log deleted');
 }
 
@@ -1950,7 +1954,9 @@ function addServiceLog(){
 }
 
 function delServiceLog(id){
-  DB.service_logs=DB.service_logs.filter(s=>String(s.id)!==String(id));
+  const s=DB.service_logs.find(s2=>String(s2.id)===String(id));
+  if(!confirm(`Delete service log?\n\n${s?.date||'?'} · ${s?.description||'?'}${s?.totalCost?'\n'+formatR(s.totalCost):''}`))return;
+  DB.service_logs=DB.service_logs.filter(s2=>String(s2.id)!==String(id));
   apiPost('delete','ServiceLogs',{id:String(id)});renderVehicles();toast('Service log deleted');
 }
 
@@ -1972,8 +1978,10 @@ function addServiceReminder(){
 }
 
 function delReminder(id){
-  DB.service_reminders=DB.service_reminders.filter(r=>String(r.id)!==String(id));
-  apiPost('delete','ServiceReminders',{id:String(id)});renderVehicles();
+  const r=DB.service_reminders.find(r2=>String(r2.id)===String(id));
+  if(!confirm(`Delete reminder?\n\n${r?.name||'?'}${r?.intervalKm?' · every '+Number(r.intervalKm).toLocaleString()+'km':''}`))return;
+  DB.service_reminders=DB.service_reminders.filter(r2=>String(r2.id)!==String(id));
+  apiPost('delete','ServiceReminders',{id:String(id)});renderVehicles();toast('Reminder deleted');
 }
 
 function checkServiceReminders(vid){
@@ -2041,7 +2049,9 @@ function cancelEditExpense(){
 }
 
 function delExpense(id){
-  DB.vehicle_expenses=DB.vehicle_expenses.filter(e=>String(e.id)!==String(id));
+  const e=DB.vehicle_expenses.find(e2=>String(e2.id)===String(id));
+  if(!confirm(`Delete expense?\n\n${e?.date||'?'} · ${e?.description||'?'}${e?.amount?'\n'+formatR(e.amount):''}`))return;
+  DB.vehicle_expenses=DB.vehicle_expenses.filter(e2=>String(e2.id)!==String(id));
   apiPost('delete','VehicleExpenses',{id:String(id)});renderVehicles();toast('Expense deleted');
 }
 
@@ -2382,7 +2392,9 @@ function addVehicleCheck(type){
 }
 
 function delVehicleCheck(id){
-  DB.vehicle_checks=DB.vehicle_checks.filter(c=>String(c.id)!==String(id));
+  const c=DB.vehicle_checks.find(c2=>String(c2.id)===String(id));
+  if(!confirm(`Delete ${c?.checkType||''} check?\n\n${c?.date||'?'}${c?.odometer?' · '+Number(c.odometer).toLocaleString()+'km':''}`))return;
+  DB.vehicle_checks=DB.vehicle_checks.filter(c2=>String(c2.id)!==String(id));
   apiPost('delete','VehicleChecks',{id:String(id)});renderVehicles();toast('Check deleted');
 }
 
@@ -2408,7 +2420,9 @@ function toggleVehicleTodo(id){
 }
 
 function delVehicleTodo(id){
-  DB.vehicle_todos=DB.vehicle_todos.filter(t=>String(t.id)!==String(id));
+  const t=DB.vehicle_todos.find(t2=>String(t2.id)===String(id));
+  if(!confirm(`Delete todo?\n\n${t?.description||'?'}`))return;
+  DB.vehicle_todos=DB.vehicle_todos.filter(t2=>String(t2.id)!==String(id));
   apiPost('delete','VehicleTodos',{id:String(id)});renderVehicles();toast('Todo deleted');
 }
 
@@ -2910,7 +2924,9 @@ function updatePart(){
 }
 function cancelEditPart(){editingPartId=null;renderVehicles();}
 function delPart(id){
-  DB.vehicle_parts=DB.vehicle_parts.filter(p=>String(p.id)!==String(id));
+  const p=DB.vehicle_parts.find(p2=>String(p2.id)===String(id));
+  if(!confirm(`Delete part?\n\n${p?.description||'?'}${p?.partNumber?' ('+p.partNumber+')':''}`))return;
+  DB.vehicle_parts=DB.vehicle_parts.filter(p2=>String(p2.id)!==String(id));
   apiPost('delete','VehicleParts',{id:String(id)});renderVehicles();toast('Part deleted');
 }
 function usePart(id){
@@ -2959,7 +2975,9 @@ function saveTyreEdit(id){
   closeModal();renderVehicles();toast('Tyre updated');
 }
 function delTyre(id){
-  DB.vehicle_tyres=DB.vehicle_tyres.filter(t=>String(t.id)!==String(id));
+  const t=DB.vehicle_tyres.find(t2=>String(t2.id)===String(id));
+  if(!confirm(`Delete tyre?\n\n${t?.brand||'?'} ${t?.model||''} · ${t?.currentPosition||'?'}${t?.size?' · '+t.size:''}`))return;
+  DB.vehicle_tyres=DB.vehicle_tyres.filter(t2=>String(t2.id)!==String(id));
   apiPost('delete','VehicleTyres',{id:String(id)});renderVehicles();toast('Tyre deleted');
 }
 function retireTyre(id){
@@ -3140,7 +3158,9 @@ function addModification(){
   renderVehicles();toast('Modification logged');
 }
 function delModification(id){
-  DB.modifications=DB.modifications.filter(m=>String(m.id)!==String(id));
+  const m=DB.modifications.find(m2=>String(m2.id)===String(id));
+  if(!confirm(`Delete modification?\n\n${m?.date||'?'} · ${m?.description||'?'}${m?.cost?'\n'+formatR(m.cost):''}`))return;
+  DB.modifications=DB.modifications.filter(m2=>String(m2.id)!==String(id));
   apiPost('delete','Modifications',{id:String(id)});renderVehicles();toast('Modification deleted');
 }
 
@@ -3156,7 +3176,9 @@ function addIncident(){
   renderVehicles();toast('Incident logged');
 }
 function delIncident(id){
-  DB.incidents=DB.incidents.filter(i=>String(i.id)!==String(id));
+  const i=DB.incidents.find(i2=>String(i2.id)===String(id));
+  if(!confirm(`Delete incident?\n\n${i?.date||'?'} · ${i?.description||'?'}`))return;
+  DB.incidents=DB.incidents.filter(i2=>String(i2.id)!==String(id));
   apiPost('delete','Incidents',{id:String(id)});renderVehicles();toast('Incident deleted');
 }
 
@@ -3166,7 +3188,9 @@ function addTrip(){
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const startOdo=+g('tr-start');const endOdo=+g('tr-end');
-  if(!startOdo||!endOdo||endOdo<=startOdo){toast('Enter valid start/end odometer');return;}
+  if(!startOdo){toast('Enter start odometer');return;}
+  if(!endOdo){toast('Enter end odometer');return;}
+  if(endOdo<=startOdo){toast('End ODO must be greater than start ODO');return;}
   const distance=endOdo-startOdo;
   const entry={id:uid(),vehicleId:String(curVeh),date:g('tr-date')||TODAY,startOdo:String(startOdo),endOdo:String(endOdo),distance:String(distance),purpose:g('tr-purpose'),tripType:g('tr-type')||'personal',route:g('tr-route'),notes:g('tr-notes'),createdAt:niso()};
   DB.trip_log.push(entry);apiPost('append','TripLog',{row:entry});
@@ -3176,7 +3200,9 @@ function addTrip(){
   renderVehicles();toast('Trip logged — '+distance+' km');
 }
 function delTrip(id){
-  DB.trip_log=DB.trip_log.filter(t=>String(t.id)!==String(id));
+  const t=DB.trip_log.find(t2=>String(t2.id)===String(id));
+  if(!confirm(`Delete trip?\n\n${t?.date||'?'} · ${t?.distance||'?'}km · ${t?.purpose||'?'}`))return;
+  DB.trip_log=DB.trip_log.filter(t2=>String(t2.id)!==String(id));
   apiPost('delete','TripLog',{id:String(id)});renderVehicles();toast('Trip deleted');
 }
 function exportTrips(vid){
@@ -3370,7 +3396,20 @@ function renderVehicleDash(box,v){
   {
     const MOD_CATS={performance:'⚡',suspension:'🔩',electrical:'💡',body:'🚗',interior:'💺',sound:'🔊',safety:'🛡',other:'📦'};
     const totalModCost=mods.reduce((s,m)=>s+(+m.cost||0),0);
-    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between">Modifications (${mods.length}) ${totalModCost?`<span style="color:var(--gold)">${formatR(totalModCost)}</span>`:''}</div>`;
+    h+=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between">Modifications (${mods.length}) ${totalModCost?`<span style="color:var(--gold)">${formatR(totalModCost)}</span>`:''}</div>
+      <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--b)">
+        <div class="row" style="margin-bottom:4px">
+          <input id="mod-date" type="date" value="${TODAY}" style="width:130px">
+          <select id="mod-cat" style="width:130px">${Object.entries(MOD_CATEGORIES).map(([k,v2])=>`<option value="${k}">${v2}</option>`).join('')}</select>
+          <input id="mod-desc" placeholder="Description" style="flex:2">
+        </div>
+        <div class="row">
+          <input id="mod-cost" type="number" placeholder="Cost (R)" style="width:100px">
+          <input id="mod-supplier" placeholder="Supplier" style="flex:1" list="dl-mod-suppliers"><datalist id="dl-mod-suppliers">${[...new Set(getModifications(curVeh).map(m=>m.supplier).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+          <input id="mod-notes" placeholder="Notes" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addModification()">+ Mod</button>
+        </div>
+      </div>`;
     if(mods.length){
       mods.forEach(m=>{
         h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto">
@@ -3384,20 +3423,6 @@ function renderVehicleDash(box,v){
         </div>`;
       });
     }
-    // Add modification form
-    h+=`<div style="border-top:1px solid var(--b);margin-top:6px;padding-top:8px">
-      <div class="row" style="margin-bottom:4px">
-        <input id="mod-date" type="date" value="${TODAY}" style="width:130px">
-        <select id="mod-cat" style="width:130px">${Object.entries(MOD_CATEGORIES).map(([k,v2])=>`<option value="${k}">${v2}</option>`).join('')}</select>
-        <input id="mod-desc" placeholder="Description" style="flex:2">
-      </div>
-      <div class="row">
-        <input id="mod-cost" type="number" placeholder="Cost (R)" style="width:100px">
-        <input id="mod-supplier" placeholder="Supplier" style="flex:1">
-        <input id="mod-notes" placeholder="Notes" style="flex:1">
-        <button class="btn btn-primary btn-sm" onclick="addModification()">+ Mod</button>
-      </div>
-    </div>`;
     h+=`</div>`;
   }
   // Vehicle info footer
@@ -3464,7 +3489,8 @@ function renderFuelSub(box,v){
     <div class="row" style="margin-bottom:6px">
       <input id="fl-date" type="date" value="${TODAY}" style="width:130px">
       <div style="display:flex;gap:4px;align-items:center">
-        <input id="fl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
+        <div><input id="fl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
+        ${fuel.length?`<div style="font-size:10px;color:var(--t3);margin-top:1px">Last: ${Number(fuel[0].odometer).toLocaleString()} km</div>`:''}</div>
         <button class="btn btn-sm" onclick="openOdoScanner()" title="Scan odometer from photo" style="padding:6px 8px">📷</button>
       </div>
     </div>
@@ -3477,7 +3503,7 @@ function renderFuelSub(box,v){
       </select>
     </div>
     <div class="row">
-      <input id="fl-station" placeholder="Station name" style="flex:1">
+      <input id="fl-station" placeholder="Station name" style="flex:1" list="dl-stations"><datalist id="dl-stations">${[...new Set(getVehicleFuel(curVeh).map(f=>f.station).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       <input id="fl-notes" placeholder="Notes" style="flex:1">
       <button class="btn btn-primary" onclick="addFuelLog()">+ Add</button>
     </div>
@@ -3517,7 +3543,7 @@ function renderServicesSub(box,v){
   <div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log service <button class="btn btn-sm" onclick="importServicesCSV()" title="Import from Fuelly services CSV">📥 Import CSV</button></div>
     <div class="row" style="margin-bottom:6px">
       <input id="sl-date" type="date" value="${TODAY}" style="width:130px">
-      <input id="sl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">
+      <div><input id="sl-odo" type="number" placeholder="Odometer (km)" style="width:140px" value="${v.currentOdo?Number(v.currentOdo):''}" onfocus="this.select()">${services.length?`<div style="font-size:10px;color:var(--t3);margin-top:1px">Last: ${Number(services[0].odometer||0).toLocaleString()} km</div>`:''}</div>
       <select id="sl-type" style="width:110px">
         <option value="routine">🔧 Routine</option><option value="repair">🛠 Repair</option>
         <option value="inspection">🔍 Inspection</option><option value="bodywork">🎨 Bodywork</option>
@@ -3528,13 +3554,25 @@ function renderServicesSub(box,v){
       <input id="sl-cost" type="number" placeholder="Cost (R)" style="width:110px">
     </div>
     <div class="row">
-      <input id="sl-provider" placeholder="Provider / mechanic" style="flex:1">
+      <input id="sl-provider" placeholder="Provider / mechanic" style="flex:1" list="dl-providers"><datalist id="dl-providers">${[...new Set(getVehicleServices(curVeh).map(s=>s.provider).filter(Boolean))].map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
       <input id="sl-notes" placeholder="Notes" style="flex:1">
       <button class="btn btn-primary" onclick="addServiceLog()">+ Add</button>
     </div>
   </div>`;
-  // Service reminders
-  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Service reminders (${reminders.length})</div>`;
+  // Service reminders — add form first, then list
+  h+=`<div class="card" style="margin-bottom:10px"><div class="card-title">Service reminders (${reminders.length})</div>
+    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--b)">
+      <div class="row" style="margin-bottom:4px">
+        <input id="sr-name" placeholder="Reminder name (e.g. Engine Oil)" style="flex:1">
+        <input id="sr-km" type="number" placeholder="Every X km" style="width:110px">
+        <input id="sr-months" type="number" placeholder="Every X months" style="width:120px">
+      </div>
+      <div class="row">
+        <input id="sr-lastodo" type="number" placeholder="Last done at ODO" value="${v.currentOdo||''}" style="width:150px">
+        <input id="sr-lastdate" type="date" value="${TODAY}" style="width:130px">
+        <button class="btn btn-primary btn-sm" onclick="addServiceReminder()">+ Reminder</button>
+      </div>
+    </div>`;
   if(reminders.length){
     reminders.forEach(r=>{
       const bg=r.urgency==='red'?'#1a0808':r.urgency==='amber'?'#1a1500':'#0a1a0a';
@@ -3556,19 +3594,7 @@ function renderServicesSub(box,v){
       </div>`;
     });
   }
-  // Add reminder form
-  h+=`<div style="border-top:1px solid var(--b);margin-top:6px;padding-top:8px">
-    <div class="row" style="margin-bottom:4px">
-      <input id="sr-name" placeholder="Reminder name (e.g. Engine Oil)" style="flex:1">
-      <input id="sr-km" type="number" placeholder="Every X km" style="width:110px">
-      <input id="sr-months" type="number" placeholder="Every X months" style="width:120px">
-    </div>
-    <div class="row">
-      <input id="sr-lastodo" type="number" placeholder="Last done at ODO" value="${v.currentOdo||''}" style="width:150px">
-      <input id="sr-lastdate" type="date" value="${TODAY}" style="width:130px">
-      <button class="btn btn-primary btn-sm" onclick="addServiceReminder()">+ Reminder</button>
-    </div>
-  </div></div>`;
+  h+=`</div>`;
   // Service history
   h+=`<div class="card"><div class="card-title">Service history (${services.length})</div>`;
   if(!services.length){h+=`<div class="empty"><div class="empty-icon">🔧</div>No service logs yet</div>`;}
@@ -4309,7 +4335,7 @@ function renderPartsSub(box,v){
     </div>
     <div class="row" style="margin-bottom:6px">
       <input id="pt-brand" placeholder="Brand" value="${esc(ep.brand||'')}" style="flex:1">
-      <input id="pt-supplier" placeholder="Supplier" value="${esc(ep.supplier||'')}" style="flex:1">
+      <input id="pt-supplier" placeholder="Supplier" value="${esc(ep.supplier||'')}" style="flex:1" list="dl-pt-suppliers"><datalist id="dl-pt-suppliers">${[...new Set(getVehicleParts(curVeh).map(p=>p.supplier).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       <input id="pt-location" placeholder="Location" value="${esc(ep.location||'')}" style="flex:1">
     </div>
     <div class="row" style="margin-bottom:6px">
@@ -4369,7 +4395,7 @@ function renderTripsSub(box,v){
   let h=`<div class="card" style="margin-bottom:10px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center">Log trip <button class="btn btn-sm" onclick="exportTrips('${curVeh}')" title="Export trips CSV for SARS">📥 Export CSV</button></div>
     <div class="row" style="margin-bottom:6px">
       <input id="tr-date" type="date" value="${TODAY}" style="width:130px">
-      <input id="tr-start" type="number" placeholder="Start ODO" style="width:120px" value="${v.currentOdo?Number(v.currentOdo):''}">
+      <div><input id="tr-start" type="number" placeholder="Start ODO" style="width:120px" value="${trips.length&&trips[0].endOdo?Number(trips[0].endOdo):v.currentOdo?Number(v.currentOdo):''}">${trips.length?`<div style="font-size:10px;color:var(--t3);margin-top:1px">Last end: ${Number(trips[0].endOdo||0).toLocaleString()}</div>`:''}</div>
       <input id="tr-end" type="number" placeholder="End ODO" style="width:120px">
     </div>
     <div class="row" style="margin-bottom:6px">
