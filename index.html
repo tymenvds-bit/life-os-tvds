@@ -4816,6 +4816,8 @@ async function initApp(){
   checkBackendHealth();
   // App capacity check
   checkAppCapacity();
+  // Seed wishlist with roadmap if empty
+  seedWishlistFromRoadmap();
 }
 
 const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
@@ -5146,6 +5148,28 @@ function delWishlistItem(idx){
   items.splice(idx,1);
   LS.set('los_app_wishlist',items);
   openAppWishlist();
+}
+function seedWishlistFromRoadmap(){
+  const items=LS.get('los_app_wishlist',[]);
+  if(items.length>0)return; // already has items, don't overwrite
+  const roadmap=[
+    {text:'Meal Planning & Kitchen AI — pantry tracker, AI recipe suggestions, monthly meal planner, auto grocery list, recipe library, household profiles (Tijmen + wife dietary prefs)',type:'feature',priority:'high',date:'2026-03-20',done:false},
+    {text:'Compliance Calendar & Team Visibility — import Excel compliance items, recurring auto-generation, dashboard widget, team view (shared read-only URL), notifications',type:'feature',priority:'high',date:'2026-03-20',done:false},
+    {text:'ClickUp Migration — export 200+ items, AI categorise (active/someday/dead), import active tasks to Life OS, retire ClickUp',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Voice Capture — browser SpeechRecognition API for hands-free input while driving',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Smart Task Management — daily focus list (AI picks 3-5), Eisenhower auto-sort, weekly review prompt, task aging/decay, context batching, energy matching',type:'feature',priority:'high',date:'2026-03-20',done:false},
+    {text:'Spiritual Tracker — verse log, prophecies/words received, theme tags, reflection notes, AI connection ("show verses about provision")',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Philosophy & Quotes Tracker — quote capture, book tracker (Audible/physical/Kindle), reading log, tags, random quote of the day',type:'feature',priority:'low',date:'2026-03-20',done:false},
+    {text:'AI Usage & Cost Tracking — auto-track tokens/cost per Claude call, monthly subscription tracker, dashboard widget',type:'feature',priority:'low',date:'2026-03-20',done:false},
+    {text:'Decision Tracker — decision log, outcome tracking (30/90 day review), AI patterns, linked to tasks',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Excel import for Red Patrol expense/service data from existing spreadsheet',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Licence renewal tracking via ServiceReminders',type:'improvement',priority:'low',date:'2026-03-20',done:false},
+    {text:'Parts inventory import from Red Patrol Excel (Nissan part numbers)',type:'feature',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Today\'s Board sync across devices via Google Sheets (currently localStorage only)',type:'bug',priority:'medium',date:'2026-03-20',done:false},
+    {text:'Duplicate item prevention — disable Save All button during save to prevent double-click',type:'bug',priority:'low',date:'2026-03-20',done:false},
+    {text:'LC70 resale override — custom resale curve for vehicles that appreciate (70 Series, classic 4x4s)',type:'improvement',priority:'medium',date:'2026-03-20',done:false},
+  ];
+  LS.set('los_app_wishlist',roadmap);
 }
 function checkAppCapacity(){
   const lines=document.documentElement.outerHTML.split('\n').length;

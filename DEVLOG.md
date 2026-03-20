@@ -124,19 +124,46 @@ Added to CLAUDE.md and enforced:
 
 ---
 
-## Architecture Snapshot (as of March 19, 2026)
+## Session: March 20, 2026 — Full Ownership Tracking Complete
+
+**What was built:**
+- AI assistant (floating 🤖 button) — knows all app data, can route actions across the entire app
+- App wishlist/dev notes modal — in-app feature request tracker, auto-seeded with roadmap from CLAUDE.md
+- Capacity monitoring — auto-checks code size, localStorage usage, and sheet count on startup
+- Tyre retirement + replacement flow — retire damaged tyres, replace with new ones in same position
+- Committed, pushed, and deployed api.gs via clasp (v17) with all 22 sheet schemas
+
+**Key decisions:**
+- App wishlist stored in localStorage (not Sheets) — it's device-specific dev tooling, not user data
+- Capacity check is console-only (warnings) — doesn't block the user, just surfaces info for the developer
+- Seeded wishlist with 15 roadmap items from CLAUDE.md so user has visibility into planned features
+- All 6 planned ownership features (specs, parts, tyres, mods, incidents, trips) confirmed built and deployed
+
+**Lessons:**
+- Session context can be lost mid-conversation — having a plan file (`robust-swinging-garden.md`) made it easy to resume
+- Always deploy api.gs immediately after schema changes to avoid the persistence bug that frustrated the user multiple times
+- The plan's implementation order was good but most items were already built by agents in the previous session — verification was the main task
+
+**Commits this session:**
+- `7176736` — Add AI assistant, app wishlist, capacity monitoring, tyre retirement
+- (next) — Seed wishlist with roadmap, update CLAUDE.md + DEVLOG.md
+
+---
+
+## Architecture Snapshot (as of March 20, 2026)
 
 | Component | Technology | Location |
 |---|---|---|
 | Frontend | Vanilla HTML/CSS/JS (single file) | `index.html` on GitHub Pages |
-| Backend | Google Apps Script | `backend/api.gs` deployed via clasp |
-| Database | Google Sheets (16 sheets) | Spreadsheet `17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s` |
+| Backend | Google Apps Script | `backend/api.gs` deployed via clasp (v17) |
+| Database | Google Sheets (22 sheets) | Spreadsheet `17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s` |
 | Calendar | Google Calendar API via Apps Script | Same Apps Script project |
 | AI | Claude API (claude-sonnet-4-20250514) | Direct browser → Anthropic API |
 | Deployment | GitHub Actions → Pages + clasp → Apps Script | `.github/workflows/deploy.yml` |
 | Offline | Service Worker + localStorage | `sw.js` with auto-versioning |
 
-**Total commits:** 78
-**Total lines of code:** ~4,000+ in index.html (single file)
-**Google Sheets:** 16 active sheets
+**Total commits:** 80+
+**Total lines of code:** ~5,200 in index.html (single file)
+**Google Sheets:** 22 active sheets (20 active + 2 legacy)
 **API actions:** 10 (read, ping, append, write, update, delete, upsert, calendar, cal_create, cal_delete, emails)
+**Vehicle sub-tabs:** 9 (Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)

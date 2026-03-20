@@ -27,7 +27,7 @@ Personal life operating system for Tijmen van der Schyff.
 | Time | Time | Time tracking with live timer, manual entry, AI bulk parse; duration-based blocks from capture; date navigation (◀/▶/Today); Screen Time-style stats (day/week/month with stacked category bars and breakdown) |
 | Journal | Journal | Daily journal with mood tracking (1-5), sidebar list, detail view |
 | Calendar | Google Calendar API | Live events from Google Calendar; create via capture or Quick Event |
-| Vehicles | Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos | Full fleet manager with 7 sub-tabs: Dashboard, Fuel, Services, Costs, Economics, Checks, Todos. See Vehicle Module section below. |
+| Vehicles | Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, VehicleParts, VehicleTyres, TyreRotations, Modifications, Incidents, TripLog | Full fleet manager with 9 sub-tabs: Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips. Mods & incidents on Services sub-tab. See Vehicle Module section below. |
 | Inventory | HomeInventory, PrimaStock | Combined tab with two sub-tabs: Home (household items) and Prima Stock (business inventory). Switching via `setInvTab()`. |
 
 ## Deployment
@@ -88,9 +88,9 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
 |----------|-------------------|---------|------------|-------------------|
-| `index.html` lines | ~5,000 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
-| `index.html` size (KB) | ~320 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
-| Google Sheets (total) | 22 | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
+| `index.html` lines | ~5,200 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~335 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| Google Sheets (total) | 22 (20 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
 | Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
 | localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
 | Apps Script daily execution | ~30 calls/day | 10,000 | 20,000 | Batch reads. Cache aggressively. |
@@ -156,8 +156,8 @@ wc -c index.html  # Bytes
 - `deleteTodo(id)` / `expandTodo(id)` / `updateDue(id, newDue)` — task CRUD
 
 **Vehicle Module (full fleet manager):**
-- `getVehicle(id)` / `getVehicleFuel(vid)` / `getVehicleServices(vid)` / `getVehicleReminders(vid)` / `getVehicleExpenses(vid)` / `getVehicleComparisons(vid)` / `getVehicleChecks(vid,type)` / `getVehicleTodos(vid)` — data getters
-- `selectVehicle(id)` / `setVehSub(sub, btn)` — UI navigation (7 sub-tabs)
+- `getVehicle(id)` / `getVehicleFuel(vid)` / `getVehicleServices(vid)` / `getVehicleReminders(vid)` / `getVehicleExpenses(vid)` / `getVehicleComparisons(vid)` / `getVehicleChecks(vid,type)` / `getVehicleTodos(vid)` / `getVehicleParts(vid)` / `getVehicleTyres(vid)` / `getTyreRotations(vid)` / `getModifications(vid)` / `getIncidents(vid)` / `getTripLog(vid)` — data getters
+- `selectVehicle(id)` / `setVehSub(sub, btn)` — UI navigation (9 sub-tabs: Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)
 - `openVehicleForm(editId)` / `saveVehicle(editId)` / `deleteVehicle(id)` — vehicle CRUD
 - `addFuelLog()` / `delFuelLog(id)` — fuel entry with auto km/L, cost/km, distance calc
 - `addServiceLog()` / `delServiceLog(id)` — service log CRUD
@@ -165,8 +165,15 @@ wc -c index.html  # Bytes
 - `checkServiceReminders(vid)` — returns reminders with urgency (red/amber/green), km/days remaining
 - `syncReminderToCalendar(remId)` — creates Google Calendar event for reminder due date
 - `addExpense()` / `editExpense(id)` / `updateExpense()` / `cancelEditExpense()` / `delExpense(id)` — expense CRUD with recurring support
-- `addVehicleCheck(type)` / `delVehicleCheck(id)` — battery SOH/voltage, tyre tread depth logging
+- `addVehicleCheck(type)` / `addTyreCheck()` / `delVehicleCheck(id)` — battery SOH/voltage, tyre tread depth logging (linked to tyre IDs)
 - `addVehicleTodo()` / `toggleVehicleTodo(id)` / `delVehicleTodo(id)` — per-vehicle checklists
+- `addPart()` / `editPart(id)` / `updatePart()` / `usePart(id)` / `delPart(id)` — parts inventory with qty tracking, low-stock alerts
+- `addTyre()` / `editTyre(id)` / `delTyre(id)` / `retireTyre(id)` / `replaceTyre(id)` — individual tyre identity management
+- `rotateTyres()` — tyre rotation with pattern presets (cross, straight, 5-tyre, custom), updates positions + history
+- `getTyreLifePrediction(tyreId)` — tread wear rate prediction (mm/km, km remaining, replacement date)
+- `addModification()` / `delModification(id)` — vehicle modification log with cost tracking
+- `addIncident()` / `delIncident(id)` — incident/accident log with claim tracking
+- `addTrip()` / `delTrip(id)` / `exportTrips(vid)` — trip log for SARS logbook (business/personal/mixed, CSV export)
 - `calcVehicleStats(vid)` — comprehensive TCO: avgKmL, costPerKm, annualCost, expense breakdown by category
 - `calcRecurringCosts(vid)` — expands recurring expenses (monthly/quarterly/annual) to actual period totals
 - `getMaintenanceTrend(vid)` — linear regression on historical maintenance for future projection
@@ -175,12 +182,21 @@ wc -c index.html  # Bytes
 - `exportVehicleData(vid)` — CSV export of all vehicle data
 - `importFuellyCSV()` / `importServicesCSV()` — bulk CSV import
 - `scanReceipt()` / `scanOdometer()` / `openReceiptScanner()` / `openOdoScanner()` — Claude Vision OCR
-- `renderVehicleDash()` / `renderFuelSub()` / `renderServicesSub()` / `renderCostsSub()` / `renderEconomicsSub()` / `renderChecksSub()` / `renderVehicleTodosSub()` — sub-tab renderers
+- `renderVehicleDash()` / `renderFuelSub()` / `renderServicesSub()` / `renderCostsSub()` / `renderEconomicsSub()` / `renderChecksSub()` / `renderVehicleTodosSub()` / `renderPartsSub()` / `renderTripsSub()` — sub-tab renderers
 - `renderEconomicsReport(res, keepName, stats)` — multi-vehicle comparison chart + year-by-year table
 - `formatR(n)` / `formatRd(n)` — ZAR currency formatting
 
 **Notifications:**
 - `checkServiceNotifications()` — browser push notification for overdue vehicle services (once per day)
+
+**AI Assistant (floating chat):**
+- `toggleAiChat()` / `sendAiChat()` — floating AI button that knows all app data, routes actions
+- `buildAiContext()` — compiles full app context (tasks, vehicles, calendar, etc.) for AI prompts
+
+**App Wishlist & Capacity:**
+- `openAppWishlist()` / `addWishlistItem()` / `toggleWishlistItem()` / `delWishlistItem()` — in-app feature request tracker (localStorage)
+- `seedWishlistFromRoadmap()` — auto-seeds wishlist with roadmap items from CLAUDE.md on first run
+- `checkAppCapacity()` — startup check: warns when code lines, localStorage, or sheet count approach limits
 
 **Utilities:**
 - `esc(s)` — HTML-escape (XSS prevention)
@@ -218,8 +234,8 @@ wc -c index.html  # Bytes
 | **Google Calendar** | Google account | Calendar events (independent of Life OS) | Standard Google backup |
 | **GitHub** | `tymenvds-bit/life-os-tvds` | Code versioning only (no user data) | Every commit recoverable |
 
-**All Google Sheets (16 active):**
-Todos, Notes, Time, Journal, Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, HomeInventory, PrimaStock + legacy: GQ_Patrol, GU_Patrol (vestigial, still loaded but not actively used)
+**All Google Sheets (22 active):**
+Todos, Notes, Time, Journal, Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, VehicleParts, VehicleTyres, TyreRotations, Modifications, Incidents, TripLog, HomeInventory, PrimaStock + legacy: GQ_Patrol, GU_Patrol (vestigial, still loaded but not actively used)
 
 **Backup strategy**: Google Sheets IS the backup. Every write goes to Sheets via Apps Script. localStorage is just a fast cache.
 
@@ -468,15 +484,25 @@ Odometer shows kilometres. Typically 6 digits.
 - [x] Cost breakdown visualization (category bars with percentages, monthly spend chart, recurring costs summary)
 - [x] TCO comparison between vehicles (Economics sub-tab with multi-vehicle chart)
 
-**Phase 4 — Polish** (partially complete):
+**Phase 4 — Polish** (mostly complete):
 - [ ] Licence renewal tracking (can use ServiceReminders with intervalMonths=12, intervalKm=0)
 - [x] Insurance tracking + premium history (VehicleExpenses with category='insurance', YoY breakdown in Costs tab)
-- [ ] Parts inventory with Nissan part numbers (VehicleTodos has partNumber field — needs dedicated import from Excel)
+- [x] Parts inventory — VehicleParts sheet + 🔩 Parts sub-tab with CRUD, category filter, qty tracking, low-stock alerts, use-part decrement
 - [x] Export vehicle data to CSV — `exportVehicleData(vid)` with 📥 button on dashboard
 - [x] Dashboard widget: "🔧 Vehicle Services Due" shows red/amber reminders across all vehicles
 - [x] Push notification for overdue services — `checkServiceNotifications()` fires browser notification once per day
 - [x] Calendar sync for reminders — 📅 button on each reminder creates Google Calendar event
 - [x] Service reminder auto-advance — ✅ Complete button recalculates next due date/ODO
+
+**Phase 5a — Full Ownership Tracking** ✅ COMPLETE:
+- [x] Tyre management — VehicleTyres (individual identity: brand, model, size, DOT, position), TyreRotations (pattern presets: cross/straight/5-tyre/custom), tread depth linked to tyre IDs, life prediction (mm/km wear rate → km remaining → replacement date), retire/replace flow
+- [x] Modification log — Modifications sheet, UI on Services sub-tab, cost tracking, category tags
+- [x] Incident log — Incidents sheet, UI on Services sub-tab, claim number, third party, resolved status
+- [x] Trip log — TripLog sheet, 📍 Trips sub-tab, business/personal/mixed, monthly summary, SARS CSV export
+- [x] Vehicle specs — oilSpec, coolantType, brakeFluidType, transFluidType, diffFluidType, tyreSize, tyrePressures added to Vehicles schema
+- [x] AI assistant — floating 🤖 button, knows all app data, routes actions
+- [x] App wishlist — in-app feature request tracker with type/priority, seeded from roadmap
+- [x] Capacity monitoring — auto-check on startup, warns when approaching code/storage/sheet limits
 
 **Phase 5 — Replacement Economics Calculator** ✅ COMPLETE:
 AI-driven 10-year TCO projection comparing current vehicle vs multiple alternatives.
