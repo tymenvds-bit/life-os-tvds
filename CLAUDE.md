@@ -88,8 +88,8 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
 |----------|-------------------|---------|------------|-------------------|
-| `index.html` lines | ~5,200 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
-| `index.html` size (KB) | ~335 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| `index.html` lines | ~5,330 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~345 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
 | Google Sheets (total) | 22 (20 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
 | Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
 | localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
@@ -197,6 +197,15 @@ wc -c index.html  # Bytes
 - `openAppWishlist()` / `addWishlistItem()` / `toggleWishlistItem()` / `delWishlistItem()` — in-app feature request tracker (localStorage)
 - `seedWishlistFromRoadmap()` — auto-seeds wishlist with roadmap items from CLAUDE.md on first run
 - `checkAppCapacity()` — startup check: warns when code lines, localStorage, or sheet count approach limits
+
+**Engineering Safeguards:**
+- `safeRender(fn, containerId, label)` — error boundary for render functions: try/catch with error card + Retry button instead of blank screen
+- `checkStorageQuota()` — estimates localStorage usage (UTF-16 bytes), toasts warning at >80% of 4MB
+- `withLock(key, fn)` / `_locks` — prevents double-click duplicate entries during apiPost calls
+- `validate.positive(val, label)` — rejects negative numbers with toast
+- `validate.odoForward(newOdo, vehicleId)` — warns (confirm override) if new ODO < current vehicle ODO
+- `validate.dateFuture(dateStr, dayLimit)` — warns (confirm override) if date >30 days in future
+- `renderSystemHealth()` — Settings modal: progress bars for localStorage usage + Google Sheets count, backend status, last sync time
 
 **Utilities:**
 - `esc(s)` — HTML-escape (XSS prevention)

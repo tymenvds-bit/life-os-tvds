@@ -557,6 +557,7 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
       <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="dark"> 🌙 Dark</label>
       <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="light"> ☀️ Light</label>
     </div>
+    <div id="system-health" style="margin-top:12px"></div>
     <div class="modal-actions">
       <button class="btn btn-sm" onclick="closeSettings()">Cancel</button>
       <button class="btn btn-sm btn-danger" style="color:var(--red);background:#1a0808;border-color:#3a1010" onclick="clearData()">Clear data</button>
@@ -656,7 +657,34 @@ function boardAddAll(){
 // ═══ STORAGE ═══
 const LS = {
   get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},
-  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.error('LS.set failed:',k,e);toast('⚠️ Storage full — data may not persist locally',5000);}}
+};
+function checkStorageQuota(){
+  let total=0;
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);total+=(k.length+(localStorage.getItem(k)||'').length)*2;}
+  const pct=total/(4*1024*1024)*100;
+  if(pct>80) toast('⚠️ Storage '+pct.toFixed(0)+'% full — consider clearing old data',5000);
+  return {bytes:total,pct};
+}
+const _locks={};
+function withLock(key,fn){
+  if(_locks[key])return;_locks[key]=true;
+  try{fn();}finally{_locks[key]=false;}
+}
+const validate={
+  positive(val,label){if(+val<0){toast(label+' cannot be negative');return false;}return true;},
+  odoForward(newOdo,vehicleId){
+    const v=getVehicle(vehicleId);if(!v)return true;
+    const cur=+(v.currentOdo||0);
+    if(cur&&newOdo<cur)return confirm('ODO '+newOdo+' is less than current '+cur+'.\nCorrecting old data?');
+    return true;
+  },
+  dateFuture(dateStr,dayLimit=30){
+    if(!dateStr)return true;
+    const diff=(new Date(dateStr)-new Date(TODAY))/(86400000);
+    if(diff>dayLimit)return confirm('Date is '+Math.round(diff)+' days in the future. Continue?');
+    return true;
+  }
 };
 
 async function apiFetch(sheet){
@@ -693,7 +721,7 @@ async function apiPost(action,sheet,data){
     let result;
     try{result=JSON.parse(text);}catch{console.error('apiPost non-JSON response:',text.slice(0,200));return{error:'Non-JSON response from server'};}
     if(result.error){console.warn('⚠️ apiPost error:',action,sheet,result.error);toast('⚠️ Sync failed: '+result.error);}
-    else console.log('✅ apiPost:',action,sheet,data.id||'');
+    else{console.log('✅ apiPost:',action,sheet,data.id||'');LS.set('los_last_sync',new Date().toISOString());}
     return result;
   }catch(e){console.error('❌ apiPost network error:',action,sheet,e.message);toast('⚠️ Offline — saved locally only');return{ok:false,local:true};}
 }
@@ -1763,6 +1791,7 @@ function closeModal(){
 
 // --- Fuel Log ---
 function addFuelLog(){
+  if(_locks.addFuel)return;
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const date=g('fl-date')||TODAY;
@@ -1770,6 +1799,10 @@ function addFuelLog(){
   if(!odo){toast('Enter odometer reading');return;}
   if(!litres){toast('Enter litres');return;}
   if(!totalCost){toast('Enter total cost');return;}
+  if(!validate.positive(litres,'Litres'))return;
+  if(!validate.positive(totalCost,'Total cost'))return;
+  if(!validate.odoForward(odo,curVeh))return;
+  if(!validate.dateFuture(date))return;
   const pricePerL=totalCost/litres;
   const fuel=getVehicleFuel(curVeh);
   const prevOdo=fuel.length?+fuel[0].odometer:0;
@@ -1777,11 +1810,12 @@ function addFuelLog(){
   const kmPerL=distanceKm&&litres?+(distanceKm/litres).toFixed(1):0;
   const costPerKm=distanceKm&&totalCost?+(totalCost/distanceKm).toFixed(2):0;
   const entry={id:uid(),vehicleId:String(curVeh),date,odometer:String(odo),litres:String(litres),totalCost:String(totalCost),pricePerL:pricePerL.toFixed(2),kmPerL:String(kmPerL),costPerKm:String(costPerKm),distanceKm:String(distanceKm),fuelType:g('fl-fueltype'),station:g('fl-station'),cityPct:'50',isFullTank:'1',isMissed:'0',paymentMethod:'',notes:g('fl-notes'),createdAt:niso()};
+  _locks.addFuel=true;
   DB.fuel_logs.unshift(entry);apiPost('append','FuelLogs',{row:entry});
   // Update vehicle currentOdo
   const v=getVehicle(curVeh);if(v&&odo>+(v.currentOdo||0)){v.currentOdo=String(odo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(odo)}});}
   ['fl-odo','fl-litres','fl-cost','fl-station','fl-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  renderVehicles();toast('Fuel log added — '+kmPerL+' km/L');
+  renderVehicles();toast('Fuel log added — '+kmPerL+' km/L');_locks.addFuel=false;
 }
 
 function delFuelLog(id){
@@ -1941,16 +1975,22 @@ async function importFuellyCSV(){
 
 // --- Service Log ---
 function addServiceLog(){
+  if(_locks.addService)return;
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const date=g('sl-date')||TODAY;const desc=g('sl-desc').trim();
   if(!desc){toast('Enter service description');return;}
+  const odoVal=+g('sl-odo');const costVal=+g('sl-cost');
+  if(odoVal&&!validate.odoForward(odoVal,curVeh))return;
+  if(costVal&&!validate.positive(costVal,'Service cost'))return;
+  if(!validate.dateFuture(date))return;
+  _locks.addService=true;
   const entry={id:uid(),vehicleId:String(curVeh),date,odometer:g('sl-odo'),totalCost:g('sl-cost'),description:desc,serviceType:g('sl-type'),provider:g('sl-provider'),parts:'',notes:g('sl-notes'),createdAt:niso()};
   DB.service_logs.unshift(entry);apiPost('append','ServiceLogs',{row:entry});
   const odo=+entry.odometer;const v=getVehicle(curVeh);
   if(v&&odo&&odo>+(v.currentOdo||0)){v.currentOdo=String(odo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(odo)}});}
   ['sl-date','sl-odo','sl-cost','sl-desc','sl-provider','sl-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  renderVehicles();toast('Service log added');
+  renderVehicles();toast('Service log added');_locks.addService=false;
 }
 
 function delServiceLog(id){
@@ -2004,14 +2044,18 @@ function checkServiceReminders(vid){
 const EXP_CATS={insurance:{emoji:'🛡',label:'Insurance',color:'var(--purple)'},licence:{emoji:'📋',label:'Licence',color:'var(--teal)'},tracker:{emoji:'📍',label:'Tracker',color:'var(--orange)'},tyres:{emoji:'🛞',label:'Tyres',color:'#b8860b'},'co-payment':{emoji:'💳',label:'Co-payment',color:'var(--red)'},parts:{emoji:'🔩',label:'Parts',color:'var(--blue)'},accessories:{emoji:'🎒',label:'Accessories',color:'var(--green)'},tolls:{emoji:'🛣',label:'Tolls',color:'var(--t3)'},other:{emoji:'📦',label:'Other',color:'var(--t2)'}};
 
 function addExpense(){
+  if(_locks.addExpense)return;
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const date=g('ex-date')||TODAY;const cat=g('ex-cat');const desc=g('ex-desc').trim();const amount=+g('ex-amount');
   if(!amount){toast('Enter an amount');return;}
+  if(!validate.positive(amount,'Amount'))return;
+  if(!validate.dateFuture(date))return;
+  _locks.addExpense=true;
   const entry={id:uid(),vehicleId:String(curVeh),date,category:cat,description:desc||EXP_CATS[cat]?.label||cat,amount:String(amount),frequency:g('ex-freq')||'once',endDate:g('ex-end')||'',supplier:g('ex-supplier'),notes:g('ex-notes'),createdAt:niso()};
   DB.vehicle_expenses.unshift(entry);apiPost('append','VehicleExpenses',{row:entry});
   ['ex-desc','ex-amount','ex-supplier','ex-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  renderVehicles();toast('Expense added: '+formatR(amount));
+  renderVehicles();toast('Expense added: '+formatR(amount));_locks.addExpense=false;
 }
 
 let editingExpenseId=null;
@@ -3185,19 +3229,23 @@ function delIncident(id){
 // --- Trip Log ---
 function getTripLog(vid){return DB.trip_log.filter(t=>String(t.vehicleId)===String(vid)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));}
 function addTrip(){
+  if(_locks.addTrip)return;
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
   const startOdo=+g('tr-start');const endOdo=+g('tr-end');
   if(!startOdo){toast('Enter start odometer');return;}
   if(!endOdo){toast('Enter end odometer');return;}
   if(endOdo<=startOdo){toast('End ODO must be greater than start ODO');return;}
+  if(!validate.odoForward(startOdo,curVeh))return;
+  if(!validate.dateFuture(g('tr-date')))return;
+  _locks.addTrip=true;
   const distance=endOdo-startOdo;
   const entry={id:uid(),vehicleId:String(curVeh),date:g('tr-date')||TODAY,startOdo:String(startOdo),endOdo:String(endOdo),distance:String(distance),purpose:g('tr-purpose'),tripType:g('tr-type')||'personal',route:g('tr-route'),notes:g('tr-notes'),createdAt:niso()};
   DB.trip_log.push(entry);apiPost('append','TripLog',{row:entry});
   // Update vehicle odo if needed
   const v=getVehicle(curVeh);if(v&&endOdo>+(v.currentOdo||0)){v.currentOdo=String(endOdo);apiPost('update','Vehicles',{id:String(curVeh),patch:{currentOdo:String(endOdo)}});}
   ['tr-start','tr-end','tr-purpose','tr-route','tr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  renderVehicles();toast('Trip logged — '+distance+' km');
+  renderVehicles();toast('Trip logged — '+distance+' km');_locks.addTrip=false;
 }
 function delTrip(id){
   const t=DB.trip_log.find(t2=>String(t2.id)===String(id));
@@ -3299,15 +3347,25 @@ function renderVehicles(){
     return;
   }
   const v=getVehicle(curVeh);if(!v){box.innerHTML='';return;}
-  if(curVehSub==='dashboard') renderVehicleDash(box,v);
-  else if(curVehSub==='fuel') renderFuelSub(box,v);
-  else if(curVehSub==='services') renderServicesSub(box,v);
-  else if(curVehSub==='costs') renderCostsSub(box,v);
-  else if(curVehSub==='economics') renderEconomicsSub(box,v);
-  else if(curVehSub==='checks') renderChecksSub(box,v);
-  else if(curVehSub==='todos') renderVehicleTodosSub(box,v);
-  else if(curVehSub==='parts') renderPartsSub(box,v);
-  else if(curVehSub==='trips') renderTripsSub(box,v);
+  try{
+    if(curVehSub==='dashboard') renderVehicleDash(box,v);
+    else if(curVehSub==='fuel') renderFuelSub(box,v);
+    else if(curVehSub==='services') renderServicesSub(box,v);
+    else if(curVehSub==='costs') renderCostsSub(box,v);
+    else if(curVehSub==='economics') renderEconomicsSub(box,v);
+    else if(curVehSub==='checks') renderChecksSub(box,v);
+    else if(curVehSub==='todos') renderVehicleTodosSub(box,v);
+    else if(curVehSub==='parts') renderPartsSub(box,v);
+    else if(curVehSub==='trips') renderTripsSub(box,v);
+  }catch(e){
+    console.error('Vehicle sub-tab render error:',e);
+    box.innerHTML=`<div class="card" style="padding:20px;text-align:center;color:var(--red)">
+      <div style="font-size:24px;margin-bottom:8px">⚠️</div>
+      <div style="font-weight:600">Vehicle ${esc(curVehSub)} failed to render</div>
+      <div style="font-size:12px;color:var(--t3);margin-top:4px">${esc(e.message)}</div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="renderVehicles()">Retry</button>
+    </div>`;
+  }
 }
 
 function renderVehicleDash(box,v){
@@ -4682,7 +4740,30 @@ ${staleList.length?`<div class="dash-section dash-span2" style="border-color:#33
   el.innerHTML=html;
   if(window._focusPicks) renderSuggestions();
 }
-function renderAll(){renderTodos();renderNotes();renderJournalSidebar();renderTimeLog();renderCalendar();renderInventory();renderVehicles();renderDashboard();updateStats();}
+function safeRender(fn, containerId, label){
+  try{ fn(); }
+  catch(e){
+    console.error(`Render error in ${label}:`,e);
+    const el=document.getElementById(containerId);
+    if(el) el.innerHTML=`<div class="card" style="padding:20px;text-align:center;color:var(--red)">
+      <div style="font-size:24px;margin-bottom:8px">⚠️</div>
+      <div style="font-weight:600">${esc(label)} failed to render</div>
+      <div style="font-size:12px;color:var(--t3);margin-top:4px">${esc(e.message)}</div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="safeRender(${fn.name},'${containerId}','${label}')">Retry</button>
+    </div>`;
+  }
+}
+function renderAll(){
+  safeRender(renderTodos,'pane-todos','Tasks');
+  safeRender(renderNotes,'pane-notes','Notes');
+  safeRender(renderJournalSidebar,'pane-journal','Journal');
+  safeRender(renderTimeLog,'pane-time','Time');
+  safeRender(renderCalendar,'pane-calendar','Calendar');
+  safeRender(renderInventory,'pane-inventory','Inventory');
+  safeRender(renderVehicles,'pane-vehicles','Vehicles');
+  safeRender(renderDashboard,'pane-dashboard','Dashboard');
+  updateStats();
+}
 
 // ═══ TAB SWITCHING ═══
 function switchTab(tab){
@@ -4806,8 +4887,32 @@ function openSettings(){
   const themeRadio=document.querySelector(`input[name="cfg-theme"][value="${CFG.theme||'auto'}"]`);
   if(themeRadio) themeRadio.checked=true;
   document.getElementById('settings-modal').style.display='flex';
+  renderSystemHealth();
 }
 function closeSettings(){document.getElementById('settings-modal').style.display='none';}
+function renderSystemHealth(){
+  const el=document.getElementById('system-health');if(!el)return;
+  // localStorage usage
+  const sq=checkStorageQuota();
+  const lsPct=sq.pct.toFixed(0);const lsKB=(sq.bytes/1024).toFixed(0);
+  // Sheets count
+  const sheetKeys=Object.keys(DB).length;
+  const sheetPct=(sheetKeys/40*100).toFixed(0);
+  // Last sync
+  const lastSync=LS.get('los_last_sync',null);
+  const syncText=lastSync?new Date(lastSync).toLocaleString():'Never';
+  // Backend status
+  const backendOk=CFG.apiUrl?'✅ Connected':'⚠️ Local only';
+  function bar(val,warn,max,label){
+    const pct=Math.min(val/max*100,100);
+    const clr=val>=warn?'var(--red)':pct>60?'#c87832':'var(--green,#5a9060)';
+    return `<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>${esc(label)}</span><span>${val} / ${max}</span></div><div style="height:6px;border-radius:3px;background:var(--b2)"><div style="height:100%;border-radius:3px;width:${pct}%;background:${clr}"></div></div></div>`;
+  }
+  el.innerHTML=`<div class="card-title" style="margin-top:4px">System Health</div>
+    ${bar(sheetKeys,40,200,'Google Sheets')}
+    ${bar(+lsKB,3072,4096,'localStorage (KB)')}
+    <div style="font-size:11px;color:var(--t3);margin-top:6px">Backend: ${backendOk}<br>Last sync: ${esc(syncText)}</div>`;
+}
 function saveSettings(){
   CFG.apiUrl=document.getElementById('cfg-api').value.trim();
   CFG.apiKey=document.getElementById('cfg-key').value.trim();
@@ -4840,8 +4945,9 @@ async function initApp(){
   checkServiceNotifications();
   // Check backend health — warn if api.gs is outdated
   checkBackendHealth();
-  // App capacity check
+  // App capacity + storage checks
   checkAppCapacity();
+  checkStorageQuota();
   // Seed wishlist with roadmap if empty
   seedWishlistFromRoadmap();
 }

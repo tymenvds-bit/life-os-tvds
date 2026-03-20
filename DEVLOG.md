@@ -150,6 +150,30 @@ Added to CLAUDE.md and enforced:
 
 ---
 
+## Session: March 20, 2026 (continued) — Engineering Fundamentals
+
+**What was built:**
+- UX improvements: delete confirmations on all 11 delete functions, forms moved above lists, datalist autocomplete, field-specific validation, last ODO helper text
+- Error boundaries (`safeRender`) — render failures show error card with Retry button instead of blank screen
+- localStorage quota warning — `checkStorageQuota()` toasts at >80% full, `LS.set` toasts on quota exceeded
+- Button locking (`_locks`) — prevents double-click duplicate entries on addFuelLog, addServiceLog, addExpense, addTrip
+- Input validation (`validate` object) — positive number checks, ODO-goes-forward warnings with confirm override, far-future date warnings
+- System Health UI in Settings — progress bars for localStorage and Sheets count, backend status, last sync time
+- CI quality checks — file size limit (500KB fail, 7,000 lines warn) and JS syntax check via `node --check`
+
+**Key decisions:**
+- Validation uses `confirm()` so user can override (correcting old data is a valid use case)
+- System Health is in Settings modal, not cluttering the dashboard — it's developer info, not daily driver info
+- CI checks are zero-dependency (node --check, wc, sed) — no npm/eslint needed
+- No unit test framework added — CI syntax check catches the biggest class of deploy-breaking errors for a single-file vanilla app
+
+**Lessons:**
+- The engineering fundamentals assessment was overdue — error boundaries and input validation are table stakes that should've been in from Phase 1
+- Button locking is critical for mobile users on slow connections where double-tap is natural
+- The plan approach (7 phases, line budget, explicit "what NOT to do") kept scope tight and prevented over-engineering
+
+---
+
 ## Architecture Snapshot (as of March 20, 2026)
 
 | Component | Technology | Location |
@@ -162,8 +186,8 @@ Added to CLAUDE.md and enforced:
 | Deployment | GitHub Actions → Pages + clasp → Apps Script | `.github/workflows/deploy.yml` |
 | Offline | Service Worker + localStorage | `sw.js` with auto-versioning |
 
-**Total commits:** 80+
-**Total lines of code:** ~5,200 in index.html (single file)
+**Total commits:** 85+
+**Total lines of code:** ~5,330 in index.html (single file)
 **Google Sheets:** 22 active sheets (20 active + 2 legacy)
 **API actions:** 10 (read, ping, append, write, update, delete, upsert, calendar, cal_create, cal_delete, emails)
 **Vehicle sub-tabs:** 9 (Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)

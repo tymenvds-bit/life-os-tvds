@@ -39,6 +39,26 @@ jobs:
             echo "::warning::backend/api.gs was modified — you MUST redeploy Apps Script (Deploy → New version)"
           fi
 
+      # Quality checks — fail build on broken JS or oversized file
+      - name: Check file size
+        run: |
+          SIZE=$(wc -c < index.html)
+          LINES=$(wc -l < index.html)
+          echo "index.html: ${SIZE} bytes, ${LINES} lines"
+          if [ "$SIZE" -gt 512000 ]; then
+            echo "::error::index.html exceeds 500KB ($SIZE bytes) — consider splitting"
+            exit 1
+          fi
+          if [ "$LINES" -gt 7000 ]; then
+            echo "::warning::index.html exceeds 7,000 lines ($LINES) — split threshold approaching"
+          fi
+
+      - name: Check JS syntax
+        run: |
+          sed -n '/<script>/,/<\/script>/p' index.html | sed '1d;$d' > /tmp/app.js
+          node --check /tmp/app.js
+          echo "✅ JS syntax OK"
+
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
