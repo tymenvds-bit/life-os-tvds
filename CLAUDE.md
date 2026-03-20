@@ -74,6 +74,48 @@ Personal life operating system for Tijmen van der Schyff.
 - `checkBackendHealth()` runs on startup — pings backend, compares `schemaKeys` against `EXPECTED_SHEETS`, toasts warning if mismatch
 - GitHub Actions warns when `backend/api.gs` changes detected in push
 
+## Engineering Standards
+
+Think about every change like a senior developer shipping a personal product they actually use daily. This is a single-file vanilla app — not a team enterprise project — so the standards are calibrated accordingly. No over-engineering, but no sloppy shortcuts either.
+
+### Before writing any code
+- **Read before you write.** Understand the function, its callers, and its context before changing it. Don't guess at behaviour.
+- **Check the blast radius.** A change to a utility function (`esc`, `LS`, `apiPost`) affects the entire app. A change inside `renderFuelSub()` affects one sub-tab. Scale your caution accordingly.
+- **Respect the line budget.** We're at ~5,330 / 7,000 lines. Every feature has a cost. Ask: "Is this worth the lines it adds?" If not, find a simpler way or skip it.
+
+### While writing code
+- **Every render function must use `safeRender()`.** No exceptions. A thrown error should show an error card, not a blank screen.
+- **Every add/create function that calls `apiPost('append', ...)` must use `_locks`.** Double-click duplicates are a known class of bug.
+- **Validate at the boundary.** Numbers that come from form inputs get `validate.positive()`. Odometer readings get `validate.odoForward()`. Dates get `validate.dateFuture()`. Don't validate deep inside helper functions — validate where the user's input enters the system.
+- **Escape all user content with `esc()` before inserting into HTML.** No exceptions. XSS in a personal app still matters — the AI assistant builds HTML from user data.
+- **Confirm before destroying.** Every delete function needs `confirm()` with a preview of what's being deleted. Data loss is irreversible when the backend syncs.
+- **Fail loudly.** `LS.set` toasts on failure. `apiPost` toasts on failure. `safeRender` shows an error card. Silent failures are the hardest bugs to diagnose.
+
+### After writing code
+- **Persistence test.** Add an item → hard refresh → is it still there? This catches the #1 recurring bug in this project (backend not redeployed).
+- **Check the console.** Look for `✅ apiPost` confirmations and absence of red errors. Console warnings from `checkBackendHealth()` or `checkStorageQuota()` are real signals.
+- **Update the docs.** CLAUDE.md must match the codebase. DEVLOG.md must capture the why. In-app HELP must reflect current features. If you changed a function signature or added a new one, document it.
+
+### Architecture principles
+- **Offline-first.** Write to localStorage immediately, then sync to Sheets. The app must work without internet.
+- **Data portability.** Google Sheets IS the database. Any future app can read the same data via CSV export or the Apps Script API. Never lock data into localStorage-only storage (exception: device-specific config like theme, API keys, wishlist).
+- **Progressive complexity.** Start with the simplest version. Add complexity only when a real user (Tijmen) hits a real problem. The vehicle economics calculator started as "ask AI for numbers" and was rewritten to deterministic math only after AI arithmetic errors were discovered in practice.
+- **Automate the pain.** If a manual step is forgotten more than twice, automate it. Service worker versioning, backend health checks, and CI syntax checks all exist because manual steps were repeatedly forgotten.
+
+### What good looks like in this project
+- A new feature adds 20-50 lines, not 200. If it's more, question the approach.
+- Forms validate inputs, lock buttons during save, and confirm deletes.
+- The user never sees a blank screen, a silent failure, or a duplicate entry.
+- CI catches syntax errors before they reach production.
+- The next developer (or AI) can read CLAUDE.md and understand the entire system without reading the code.
+
+### What bad looks like
+- Adding a framework, build tool, or npm dependency "for just this one thing."
+- Writing code without reading the existing function first and creating a near-duplicate.
+- Skipping `safeRender`, `_locks`, `validate`, `esc()`, or `confirm()` because "it's just a small feature."
+- Changing `api.gs` without deploying via clasp. (This has caused more debugging hours than any actual bug.)
+- Adding features without updating CLAUDE.md, DEVLOG.md, and the HELP object.
+
 ## Continuous Improvement
 
 - **Workflow optimisation**: Continuously evaluate if development, deployment, and data workflows can be improved. If a manual step is repeated more than twice, automate it.
