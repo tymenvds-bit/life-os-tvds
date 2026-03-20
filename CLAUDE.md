@@ -20,7 +20,7 @@ Personal life operating system for Tijmen van der Schyff.
 
 | Tab | Sheet(s) | Description |
 |-----|----------|-------------|
-| Dashboard | — | Command centre: 3-column grid with Today's Board (pinnable AI-picked tasks), Schedule Today, Priority Tasks, Overdue list, Time accountability, Momentum (streak, weekly chart, Eisenhower breakdown), Vehicle Services Due widget, Status (waiting/in-progress), Stale task alerts. Default landing tab. |
+| Dashboard | DailyLog | Command centre: Today's Board, Schedule, Priority Tasks, Overdue, Time, Daily Accountability (progress rings for tasks/time/journal targets, 30-day habit chain, streak with freeze days, Eisenhower breakdown), Quick Wins (low-energy open loops), Vehicle Services Due, Status, Stale alerts, Evening Close-Out flow. Default landing tab. |
 | Capture | — | AI-powered input: Universal Capture (standard/eod/whatsapp/fuel modes), 🎙️ Voice Capture (SpeechRecognition API), Email Briefing, Quick Add Task, 📷 Scan Slip (Claude Vision OCR) |
 | Tasks | Todos | Task manager with statuses (open/in-progress/waiting/done), Eisenhower auto-classification (DO/SCHEDULE/DELEGATE/ELIMINATE), energy tags (high/medium/low), context tags (office/factory/calls/email/home/errands/computer/anywhere), progress logs, priorities, categories, due dates, overdue tracking, AI breakdown, "What should I do next?" AI button, Weekly Review |
 | Notes | Notes | Freeform notes with categories, tags, detail view with edit/delete |
@@ -130,9 +130,9 @@ Think about every change like a senior developer shipping a personal product the
 
 | Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
 |----------|-------------------|---------|------------|-------------------|
-| `index.html` lines | ~5,490 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
-| `index.html` size (KB) | ~360 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
-| Google Sheets (total) | 22 (20 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
+| `index.html` lines | ~5,630 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~370 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| Google Sheets (total) | 23 (21 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
 | Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
 | localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
 | Apps Script daily execution | ~30 calls/day | 10,000 | 20,000 | Batch reads. Cache aggressively. |
@@ -188,8 +188,10 @@ wc -c index.html  # Bytes
 - `aiWeeklyReview()` — AI-powered weekly review: completed tasks, focus recommendations, stale/overdue decisions, work-life balance
 
 **Dashboard:**
-- `renderDashboard()` — 3-column grid: Today's Board, Schedule, Priority Tasks, Overdue, Time, Momentum (streak + weekly chart + Eisenhower breakdown), Vehicle Services Due, Status, Stale
+- `renderDashboard()` — 3-column grid: Today's Board, Schedule, Priority Tasks, Overdue, Time, Daily Accountability (habit chain + progress rings + Eisenhower), Quick Wins, Vehicle Services Due, Status, Stale
 - `loadTodayBoard()` / `commitToday(id)` / `uncommitToday(id)` / `isOnBoard(id)` / `boardToggle(id)` — Today's Board management (persists to Sheets via `TodayBoard` localStorage key)
+- `closeOutDay()` — evening close-out modal: day summary, mood picker, reflection textarea, tomorrow preview
+- `saveCloseOut()` — saves journal entry (append or create) + DailyLog row (tasks, time, journal, mood, streak)
 - `dashToggle(id)` — toggle task done from dashboard
 - `renderSuggestions()` — AI suggestions panel
 
@@ -289,8 +291,8 @@ wc -c index.html  # Bytes
 | **Google Calendar** | Google account | Calendar events (independent of Life OS) | Standard Google backup |
 | **GitHub** | `tymenvds-bit/life-os-tvds` | Code versioning only (no user data) | Every commit recoverable |
 
-**All Google Sheets (22 active):**
-Todos, Notes, Time, Journal, Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, VehicleParts, VehicleTyres, TyreRotations, Modifications, Incidents, TripLog, HomeInventory, PrimaStock + legacy: GQ_Patrol, GU_Patrol (vestigial, still loaded but not actively used)
+**All Google Sheets (23 active):**
+Todos, Notes, Time, Journal, DailyLog, Vehicles, FuelLogs, ServiceLogs, ServiceReminders, VehicleExpenses, VehicleComparisons, VehicleChecks, VehicleTodos, VehicleParts, VehicleTyres, TyreRotations, Modifications, Incidents, TripLog, HomeInventory, PrimaStock + legacy: GQ_Patrol, GU_Patrol (vestigial, still loaded but not actively used)
 
 **Backup strategy**: Google Sheets IS the backup. Every write goes to Sheets via Apps Script. localStorage is just a fast cache.
 
@@ -699,3 +701,17 @@ AI-driven 10-year TCO projection comparing current vehicle vs multiple alternati
 - Today's Board data stored in localStorage (per-device) — does NOT sync across devices via Sheets yet
 - `calDelete(eventId)` — backend supports `cal_delete` action but no frontend function wraps it yet
 - Legacy GQ_Patrol / GU_Patrol sheets still loaded in `loadAll()` — vestigial, should eventually be removed
+
+### 13. Gym & Fitness Tracker (New Module)
+**Context**: Tijmen's wife is gym-conscious and both track fitness informally. A structured tracker would complement the meal planning module and daily accountability system.
+
+**Vision**:
+- **Workout log** — date, type (weights/cardio/sport), exercises with sets/reps/weight, duration, notes
+- **Program tracker** — follow a structured program (e.g. 5x5, PPL, custom). Track progression per exercise.
+- **Body metrics** — weight, measurements, photos (optional). Trend charts over time.
+- **Gym calendar** — planned vs actual sessions. Shows on Dashboard and Daily Accountability.
+- **Integration with Daily Accountability** — gym session counts as a 4th habit target alongside tasks, time, journal
+- **AI coach** — "Suggest a workout for today based on what I did this week" or "I have 30 min and dumbbells at home"
+- **Nutrition link** — connects to meal planning module for calorie/macro awareness (future)
+
+**Sheet**: `Workouts` (id, date, type, exercises JSON, duration, notes, createdAt), `BodyMetrics` (id, date, weight, measurements JSON, notes, createdAt)

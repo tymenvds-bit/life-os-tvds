@@ -197,20 +197,56 @@ Added to CLAUDE.md and enforced:
 
 ---
 
+## Session: March 20, 2026 (continued) — Daily Accountability System
+
+**What was built:**
+- Daily Accountability section on Dashboard replacing basic Momentum:
+  - Progress rings for tasks/time/journal with configurable targets
+  - 30-day habit chain grid (green=3/3, gold=2/3, dim=1/3) — like GitHub contributions
+  - Streak with freeze days (configurable — weekends don't break streak by default)
+  - "All targets hit today ✓" signal when done
+- Evening Close-Out flow (🌙 button on Dashboard):
+  - Day summary: tasks done, time breakdown by category, overdue count
+  - Mood picker (1-5 emoji scale)
+  - Reflection textarea pre-filled with day stats
+  - Saves journal entry + DailyLog row to Sheets
+  - Tomorrow preview (upcoming calendar events)
+- Quick Wins section on Dashboard — low-energy open tasks to close mental loops
+- Daily targets in Settings: tasks/day (default 3), hours/day (default 8), streak freeze days
+- DailyLog sheet (new — 23rd active sheet) for historical accountability data
+- Gym & Fitness Tracker added to roadmap (#13)
+
+**Key decisions:**
+- Progress rings use SVG — lightweight, no library needed, looks great
+- Close-out appends to existing journal if already written today (doesn't overwrite)
+- DailyLog uses upsert logic — closing out twice updates the same row
+- Quick wins filters for low-energy + not-eliminated tasks, excludes board items
+- Streak freeze is user-configurable ("0,6" = Sun+Sat) — respects rest days without breaking the chain
+
+**Psychological principles applied:**
+- Don't Break the Chain (Seinfeld) — visual 30-day habit chain
+- Implementation intentions — close-out at a specific time becomes a ritual
+- Progress principle — "here's what you moved forward today" even on bad days
+- Zeigarnik effect — Quick Wins section frees mental RAM by closing open loops
+- Clear done-for-the-day signal — all 3 rings green = permission to stop
+
+---
+
 ## Architecture Snapshot (as of March 20, 2026)
 
 | Component | Technology | Location |
 |---|---|---|
 | Frontend | Vanilla HTML/CSS/JS (single file) | `index.html` on GitHub Pages |
-| Backend | Google Apps Script | `backend/api.gs` deployed via clasp (v17) |
-| Database | Google Sheets (22 sheets) | Spreadsheet `17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s` |
+| Backend | Google Apps Script | `backend/api.gs` deployed via clasp (v18) |
+| Database | Google Sheets (23 sheets) | Spreadsheet `17IXrGN11g8Fm8AjROr_W9_99xz1q_jqCdb8AQOFIX2s` |
 | Calendar | Google Calendar API via Apps Script | Same Apps Script project |
 | AI | Claude API (claude-sonnet-4-20250514) | Direct browser → Anthropic API |
 | Deployment | GitHub Actions → Pages + clasp → Apps Script | `.github/workflows/deploy.yml` |
 | Offline | Service Worker + localStorage | `sw.js` with auto-versioning |
 
-**Total commits:** 87+
-**Total lines of code:** ~5,490 in index.html (single file)
+**Total commits:** 89+
+**Total lines of code:** ~5,630 in index.html (single file)
+**Google Sheets:** 23 active sheets (21 active + 2 legacy)
 **Google Sheets:** 22 active sheets (20 active + 2 legacy)
 **API actions:** 10 (read, ping, append, write, update, delete, upsert, calendar, cal_create, cal_delete, emails)
 **Vehicle sub-tabs:** 9 (Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)

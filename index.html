@@ -568,6 +568,15 @@ code{background:var(--bg3);border:1px solid var(--b);border-radius:3px;padding:1
       <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="dark"> 🌙 Dark</label>
       <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="cfg-theme" value="light"> ☀️ Light</label>
     </div>
+    <div class="card-title" style="margin-top:8px">Daily Targets</div>
+    <div style="display:flex;gap:8px;margin-bottom:4px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px">✅ Tasks/day: <input id="cfg-task-target" type="number" min="1" max="20" style="width:50px;padding:3px 6px;font-size:11px"></label>
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px">⏱️ Hours/day: <input id="cfg-time-target" type="number" min="1" max="16" step="0.5" style="width:50px;padding:3px 6px;font-size:11px"></label>
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px">🧊 Streak freeze days: <input id="cfg-freeze-days" placeholder="0,6 (Sun,Sat)" style="width:100px;padding:3px 6px;font-size:11px"></label>
+      <div style="font-size:9px;color:var(--t3);margin-top:2px">Days that don't break your streak. 0=Sun, 6=Sat. Comma-separated.</div>
+    </div>
     <div id="system-health" style="margin-top:12px"></div>
     <div class="modal-actions">
       <button class="btn btn-sm" onclick="closeSettings()">Cancel</button>
@@ -632,8 +641,8 @@ let calEvents = [];
 let captureData = null;
 
 // ═══ STATE ═══
-let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[],vehicle_parts:[],vehicle_tyres:[],tyre_rotations:[],modifications:[],incidents:[],trip_log:[]};
-let CFG = {apiUrl:'',apiKey:'',mode:'local'};
+let DB = {todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[],vehicle_parts:[],vehicle_tyres:[],tyre_rotations:[],modifications:[],incidents:[],trip_log:[],daily_log:[]};
+let CFG = {apiUrl:'',apiKey:'',mode:'local',taskTarget:3,timeTarget:480,streakFreezeDays:'0,6'};
 let activeTimer = null, timerInterval = null, timerElapsed = 0;
 let todoFilter = 'all', expandedTodo = null;
 let selNote = null, selJournal = null;
@@ -890,8 +899,8 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
-  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos','VehicleParts':'vehicle_parts','VehicleTyres':'vehicle_tyres','TyreRotations':'tyre_rotations','Modifications':'modifications','Incidents':'incidents','TripLog':'trip_log'};
+  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog'];
+  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos','VehicleParts':'vehicle_parts','VehicleTyres':'vehicle_tyres','TyreRotations':'tyre_rotations','Modifications':'modifications','Incidents':'incidents','TripLog':'trip_log','DailyLog':'daily_log'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
     const key=SHEET_MAP[s]||s.toLowerCase();
@@ -1377,6 +1386,88 @@ async function aiFocus(){
     if(el) el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${esc(e.message||'Unknown')}</div>`;
   }
   btn.disabled=false;btn.innerHTML='🤖 AI Pick';
+}
+
+function closeOutDay(){
+  const doneToday=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===TODAY);
+  const timeToday=DB.time.filter(b=>b.date===TODAY);
+  const totalTime=timeToday.reduce((s,b)=>s+(+b.duration||0),0);
+  const catTime={};timeToday.forEach(b=>{const c=b.category||'admin';catTime[c]=(catTime[c]||0)+(+b.duration||0);});
+  const catSummary=Object.entries(catTime).sort((a,b)=>b[1]-a[1]).map(([c,m])=>`${(CATS[c]||{emoji:'📋'}).emoji} ${(CATS[c]||{label:c}).label}: ${fmtDur(m)}`).join(', ');
+  const hasJournal=DB.journal.some(j=>j.date===TODAY);
+  const tomorrowCal=calEvents.filter(e=>e.date>TODAY).slice(0,3);
+  const overdue=DB.todos.filter(t=>isOverdue(t)).length;
+  // Build close-out modal
+  const modal=document.getElementById('help-modal');
+  const body=document.getElementById('help-modal-body');
+  body.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="modal-title" style="margin:0">🌙 Close Out Day</div><button class="btn btn-sm" onclick="document.getElementById('help-modal').style.display='none'">✕</button></div>
+    <div style="font-size:13px;margin-bottom:12px">
+      <div style="font-weight:600;margin-bottom:6px">Today's Summary</div>
+      <div style="display:flex;gap:16px;margin-bottom:8px">
+        <span>✅ ${doneToday.length} tasks done</span>
+        <span>⏱️ ${fmtDur(totalTime)} logged</span>
+        <span>📓 Journal: ${hasJournal?'Yes':'Not yet'}</span>
+      </div>
+      ${doneToday.length?`<div style="font-size:11px;color:var(--t2);margin-bottom:8px">${doneToday.map(t=>'✓ '+esc(t.title)).join('<br>')}</div>`:''}
+      ${catSummary?`<div style="font-size:11px;color:var(--t3);margin-bottom:8px">Time: ${catSummary}</div>`:''}
+      ${overdue?`<div style="font-size:11px;color:var(--red);margin-bottom:8px">⚠️ ${overdue} overdue tasks carry into tomorrow</div>`:''}
+      ${tomorrowCal.length?`<div style="font-size:11px;margin-bottom:8px"><b>Tomorrow:</b> ${tomorrowCal.map(e=>esc(e.title)).join(', ')}</div>`:''}
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px">Mood</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px" id="closeout-mood">${[1,2,3,4,5].map(m=>`<span style="font-size:24px;cursor:pointer;opacity:0.4" onclick="this.parentElement.querySelectorAll('span').forEach(s=>s.style.opacity=0.4);this.style.opacity=1;this.parentElement.dataset.mood=${m}">${MOODS[m]}</span>`).join('')}</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px">Evening reflection</div>
+      <textarea id="closeout-text" rows="3" placeholder="What's on your mind? How did the day go?" style="width:100%">${hasJournal?'':'Completed '+doneToday.length+' tasks. '+fmtDur(totalTime)+' logged'+(catSummary?' ('+catSummary+')':'')+'.\n'}</textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" onclick="document.getElementById('help-modal').style.display='none'">Skip</button>
+      <button class="btn btn-primary btn-sm" onclick="saveCloseOut()">Save & Close Day</button>
+    </div>`;
+  modal.style.display='flex';
+}
+function saveCloseOut(){
+  const mood=document.getElementById('closeout-mood')?.dataset.mood||'3';
+  const text=document.getElementById('closeout-text')?.value?.trim()||'';
+  // Save journal if not already done today
+  const existing=DB.journal.find(j=>j.date===TODAY);
+  if(existing){
+    if(text){existing.body=(existing.body?existing.body+'\n\n---\n':'')+text;existing.mood=mood;existing.updatedAt=niso();
+    apiPost('update','Journal',{id:String(existing.id),patch:{body:existing.body,mood,updatedAt:existing.updatedAt}});}
+  }else{
+    const j={id:uid(),date:TODAY,body:text,mood,tags:'close-out',createdAt:niso()};
+    DB.journal.unshift(j);apiPost('append','Journal',{row:j});
+  }
+  // Save DailyLog
+  const doneCount=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===TODAY).length;
+  const timeMin=DB.time.filter(b=>b.date===TODAY).reduce((s,b)=>s+(+b.duration||0),0);
+  const hasJ=true;// we just saved it
+  const taskTarget=CFG.taskTarget||3;const timeTarget=CFG.timeTarget||480;
+  // Calculate streak
+  const freezeDays=(CFG.streakFreezeDays||'0,6').split(',').map(Number);
+  let streak=0;
+  for(let d=0;d<30;d++){
+    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
+    const dow=new Date(dt).getDay();
+    const isFrozen=freezeDays.includes(dow);
+    const dc=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
+    const tm=DB.time.filter(b=>b.date===dt).reduce((s,b)=>s+(+b.duration||0),0);
+    const jd=dt===TODAY?true:DB.journal.some(j2=>j2.date===dt);
+    const hits=(dc>=taskTarget?1:0)+(tm>=timeTarget?1:0)+(jd?1:0);
+    if(hits>0||isFrozen) streak++; else if(d>0) break;
+  }
+  const log={id:uid(),date:TODAY,tasksCompleted:String(doneCount),taskTarget:String(taskTarget),timeLogged:String(timeMin),timeTarget:String(timeTarget),journaled:'1',mood,streakDay:String(streak),notes:text.slice(0,200),createdAt:niso()};
+  // Upsert: check if today already has an entry
+  const existingLog=DB.daily_log.find(l=>l.date===TODAY);
+  if(existingLog){
+    Object.assign(existingLog,log,{id:existingLog.id});
+    apiPost('update','DailyLog',{id:String(existingLog.id),patch:log});
+  }else{
+    DB.daily_log.push(log);apiPost('append','DailyLog',{row:log});
+  }
+  document.getElementById('help-modal').style.display='none';
+  renderAll();toast('Day closed out — '+doneCount+' tasks, '+fmtDur(timeMin)+', streak: '+streak+'d');
 }
 
 function renderSuggestions(){
@@ -4831,37 +4922,65 @@ function renderDashboard(){
   }).join('')}</div>`:'<div style="font-size:11px;color:var(--t3);padding:4px 0">No time logged yet today</div>'}
 </div>
 
-<!-- ═══ MOMENTUM ═══ -->
+<!-- ═══ DAILY ACCOUNTABILITY ═══ -->
 ${(()=>{
-  // Completion streak: consecutive days with at least 1 task completed
+  const freezeDays=(CFG.streakFreezeDays||'0,6').split(',').map(Number);
+  const taskTarget=CFG.taskTarget||3;
+  const timeTarget=CFG.timeTarget||480;
+  // Habit data for 30 days
+  const days30=[];
+  for(let d=29;d>=0;d--){
+    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
+    const dow=new Date(dt).getDay();
+    const isFrozen=freezeDays.includes(dow);
+    const tasks=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
+    const time=DB.time.filter(b=>b.date===dt).reduce((s,b)=>s+(+b.duration||0),0);
+    const journal=DB.journal.some(j=>j.date===dt);
+    const hits=(tasks>=taskTarget?1:0)+(time>=timeTarget?1:0)+(journal?1:0);
+    days30.push({dt,tasks,time,journal,hits,isFrozen});
+  }
+  // Streak: consecutive days with hits>0 or frozen
   let streak=0;
-  for(let d=0;d<30;d++){
-    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
-    const doneOnDay=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
-    if(doneOnDay>0) streak++; else if(d>0) break;
+  for(let i=days30.length-1;i>=0;i--){
+    const d=days30[i];
+    if(d.hits>0||d.isFrozen) streak++; else if(i<days30.length-1) break;
   }
-  // Weekly completion counts (last 7 days)
-  const weekDays=[];
-  for(let d=6;d>=0;d--){
-    const dt=new Date(Date.now()-d*86400000).toISOString().split('T')[0];
-    const c=DB.todos.filter(t=>getStatus(t)==='done'&&normalizeDate(t.updatedAt)===dt).length;
-    weekDays.push({day:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(dt).getDay()],count:c});
+  // Today's progress
+  const todayData=days30[days30.length-1];
+  const taskPct=Math.min(100,Math.round(todayDone/taskTarget*100));
+  const timePctGoal=Math.min(100,Math.round(todayTime/timeTarget*100));
+  const allThree=todayDone>=taskTarget&&todayTime>=timeTarget&&hasJournal;
+  // SVG ring helper
+  function ring(pct,color,label,val,sz=48){
+    const r=sz/2-4;const c=2*Math.PI*r;const off=c*(1-pct/100);
+    return`<div style="text-align:center"><svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><circle cx="${sz/2}" cy="${sz/2}" r="${r}" fill="none" stroke="var(--b2)" stroke-width="3"/><circle cx="${sz/2}" cy="${sz/2}" r="${r}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${c}" stroke-dashoffset="${off}" stroke-linecap="round" transform="rotate(-90 ${sz/2} ${sz/2})"/><text x="${sz/2}" y="${sz/2+1}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-size="11" font-weight="600" font-family="DM Mono,monospace">${val}</text></svg><div style="font-size:9px;color:var(--t3);margin-top:1px">${label}</div></div>`;
   }
-  const maxC=Math.max(...weekDays.map(d=>d.count),1);
-  // Eisenhower breakdown
+  // Habit chain grid
+  const chainHTML=days30.map(d=>{
+    const clr=d.hits>=3?'var(--green)':d.hits===2?'var(--gold)':d.hits===1?'var(--b2)':'transparent';
+    const border=d.isFrozen&&d.hits===0?'1px dashed var(--t3)':'1px solid '+(d.hits?clr:'var(--b2)');
+    const title=d.dt+': '+d.tasks+' tasks, '+fmtDur(d.time)+', '+(d.journal?'journaled':'no journal');
+    return`<div title="${title}" style="width:10px;height:10px;border-radius:2px;background:${clr};border:${border}"></div>`;
+  }).join('');
+  // Eisenhower
   const eisCounts={DO:0,SCHEDULE:0,DELEGATE:0,ELIMINATE:0};
   open.forEach(t=>{const e=getEisenhower(t);eisCounts[e.q]++;});
-  const weekTotal=weekDays.reduce((s,d)=>s+d.count,0);
   return`<div class="dash-section">
-    <div class="dash-section-hdr"><span class="dash-section-title">Momentum</span></div>
-    <div style="display:flex;gap:16px;align-items:center;margin-bottom:8px">
-      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:${streak>=3?'var(--green)':streak>=1?'var(--gold)':'var(--t3)'}">${streak}</div><div style="font-size:10px;color:var(--t3)">day streak</div></div>
-      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--blue)">${weekTotal}</div><div style="font-size:10px;color:var(--t3)">this week</div></div>
-      <div style="text-align:center"><div style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--t)">${todayDone}</div><div style="font-size:10px;color:var(--t3)">today</div></div>
+    <div class="dash-section-hdr">
+      <span class="dash-section-title">Daily Accountability</span>
+      <button class="btn btn-sm" onclick="closeOutDay()" style="font-size:10px">🌙 Close out day</button>
     </div>
-    <div style="display:flex;gap:3px;align-items:flex-end;height:36px;margin-bottom:8px">${weekDays.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="width:100%;background:var(--blue);border-radius:2px;height:${Math.max(2,d.count/maxC*28)}px;opacity:${d.count?1:.2}"></div><div style="font-size:8px;color:var(--t3)">${d.day}</div></div>`).join('')}</div>
-    <div style="display:flex;gap:6px;font-size:10px;flex-wrap:wrap">
-      <span style="color:var(--red)">🔴 Do now: ${eisCounts.DO}</span>
+    <div style="display:flex;gap:14px;align-items:center;justify-content:center;margin-bottom:10px">
+      ${ring(taskPct,todayDone>=taskTarget?'var(--green)':'var(--gold)','Tasks',todayDone+'/'+taskTarget)}
+      ${ring(timePctGoal,todayTime>=timeTarget?'var(--green)':'var(--gold)','Time',fmtDur(todayTime))}
+      ${ring(hasJournal?100:0,hasJournal?'var(--green)':'var(--t3)','Journal',hasJournal?'✓':'—')}
+      <div style="text-align:center"><div style="font-size:26px;font-weight:700;font-family:'DM Mono',monospace;color:${streak>=7?'var(--green)':streak>=3?'var(--gold)':'var(--t3)'}">${streak}</div><div style="font-size:9px;color:var(--t3)">day streak</div></div>
+    </div>
+    ${allThree?'<div style="text-align:center;font-size:12px;color:var(--green);margin-bottom:6px">All targets hit today ✓</div>':''}
+    <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">${chainHTML}</div>
+    <div style="display:flex;gap:4px;justify-content:center;font-size:9px;color:var(--t3);margin-bottom:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green)"></span> 3/3 <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--gold);margin-left:4px"></span> 2/3 <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--b2);margin-left:4px"></span> 1/3</div>
+    <div style="display:flex;gap:6px;font-size:10px;flex-wrap:wrap;justify-content:center">
+      <span style="color:var(--red)">🔴 Do: ${eisCounts.DO}</span>
       <span style="color:var(--blue)">🔵 Schedule: ${eisCounts.SCHEDULE}</span>
       <span style="color:var(--gold)">🟡 Delegate: ${eisCounts.DELEGATE}</span>
       <span style="color:var(--t3)">⚪ Eliminate: ${eisCounts.ELIMINATE}</span>
@@ -4879,6 +4998,21 @@ ${(()=>{
       const label=r.kmRemaining!==null?(r.kmRemaining<0?Math.abs(r.kmRemaining).toLocaleString()+'km OVERDUE':r.kmRemaining.toLocaleString()+'km'):(r.daysRemaining<0?Math.abs(r.daysRemaining)+'d OVERDUE':r.daysRemaining+'d');
       return`<div class="dash-item"><span style="font-size:13px">🚗</span><span class="dash-item-body"><b>${esc(r.vehicleName)}</b> — ${esc(r.name)}</span><span ${badge} style="font-size:11px;font-family:'DM Mono',monospace">${label}</span></div>`;
     }).join('')}
+  </div>`;
+})()}
+${(()=>{
+  const quickWins=open.filter(t=>!isOnBoard(t.id)&&(t.energy==='low'||t.priority==='low'||t.priority==='normal')&&getEisenhower(t).q!=='ELIMINATE').slice(0,5);
+  if(!quickWins.length) return '';
+  return`<div class="dash-section">
+    <div class="dash-section-hdr"><span class="dash-section-title">⚡ Quick wins</span><span style="font-size:9px;color:var(--t3)">Close open loops in 15 min</span></div>
+    ${quickWins.map(t=>{const cat=CATS[t.category]||CATS.admin;
+      return`<div class="dash-item">
+        <div class="dash-check" onclick="dashToggle('${t.id}')">☐</div>
+        <span style="font-size:13px;flex-shrink:0">${cat.emoji}</span>
+        <span class="dash-item-body" style="color:var(--t)">${esc(t.title)}</span>
+        ${t.context?`<span style="font-size:9px;color:var(--t3)">${CONTEXT_ICONS[t.context]||''}</span>`:''}
+        <button class="pin-btn" onclick="commitToday('${t.id}')" title="Add to board">📌</button>
+      </div>`;}).join('')}
   </div>`;
 })()}
 ${staleList.length?`<div class="dash-section dash-span2" style="border-color:#333">
@@ -4952,7 +5086,10 @@ const HELP={
     {h:'Priority Tasks',p:'Your highest priority open tasks across all categories. Click the 📌 pin to add any to your board.'},
     {h:'Overdue',p:'Tasks past their due date. Click the checkbox to mark done, or 📌 to add to your board for today.'},
     {h:'Vehicle Services Due',p:'Shows red/amber service reminders across ALL your vehicles. Click <b>Vehicles →</b> to manage.'},
-    {h:'Time Today',p:'Shows hours logged today vs your 8h target with a progress bar and category breakdown.'},
+    {h:'Time Today',p:'Shows hours logged today vs your target with a progress bar and category breakdown.'},
+    {h:'Daily Accountability',p:'Three progress rings show your daily targets: tasks completed, time logged, journal written. The 30-day habit chain (like GitHub contributions) shows your consistency. Green=3/3 targets hit, gold=2/3, dim=1/3. Streak freeze days (configurable in Settings) don\'t break your chain.'},
+    {h:'🌙 Close Out Day',p:'End-of-day ritual: see your day summary, pick your mood, write a reflection. Saves to journal and DailyLog. Pre-fills with your stats so you can just add thoughts. The \"done for the day\" signal.'},
+    {h:'⚡ Quick Wins',p:'Low-energy open tasks you can knock out quickly. Closing these frees mental bandwidth (Zeigarnik effect). Pin to board or tick done directly.'},
   ]},
   capture:{title:'⚡ Capture',sections:[
     {h:'Universal Capture',p:'Type or paste anything — tasks, notes, time entries, fuel logs, journal thoughts. AI parses it into the right categories.'},
@@ -5047,6 +5184,9 @@ function openSettings(){
   document.getElementById('cfg-mode').textContent=CFG.apiUrl?'✅ Connected to Google Sheets':'⚠️ Local mode — data on this device only';
   const themeRadio=document.querySelector(`input[name="cfg-theme"][value="${CFG.theme||'auto'}"]`);
   if(themeRadio) themeRadio.checked=true;
+  document.getElementById('cfg-task-target').value=CFG.taskTarget||3;
+  document.getElementById('cfg-time-target').value=(CFG.timeTarget||480)/60;
+  document.getElementById('cfg-freeze-days').value=CFG.streakFreezeDays||'0,6';
   document.getElementById('settings-modal').style.display='flex';
   renderSystemHealth();
 }
@@ -5080,6 +5220,9 @@ function saveSettings(){
   CFG.mode=CFG.apiUrl?'sheets':'local';
   const themeRadio=document.querySelector('input[name="cfg-theme"]:checked');
   CFG.theme=themeRadio?themeRadio.value:'auto';
+  CFG.taskTarget=+(document.getElementById('cfg-task-target').value)||3;
+  CFG.timeTarget=(+(document.getElementById('cfg-time-target').value)||8)*60;
+  CFG.streakFreezeDays=document.getElementById('cfg-freeze-days').value.trim()||'0,6';
   LS.set('los_cfg',CFG);applyTheme();closeSettings();toast('Settings saved');setSyncBadge(CFG.apiUrl?'ok':'offline');
 }
 function clearData(){if(!confirm('Delete ALL data?'))return;DB={todos:[],notes:[],time:[],journal:[],gq_patrol:[],gu_patrol:[],home_inventory:[],prima_stock:[],vehicles:[],fuel_logs:[],service_logs:[],service_reminders:[],vehicle_expenses:[],vehicle_comparisons:[],vehicle_checks:[],vehicle_todos:[],vehicle_parts:[],vehicle_tyres:[],tyre_rotations:[],modifications:[],incidents:[],trip_log:[]};['todos','notes','time','journal','gq_patrol','gu_patrol','home_inventory','prima_stock','vehicles','fuellogs','servicelogs','servicereminders','vehicleexpenses','vehiclecomparisons','vehiclechecks','vehicletodos','vehicleparts','vehicletyres','tyrerotations','modifications','incidents','triplog'].forEach(k=>LS.set('los_'+k,[]));renderAll();closeSettings();toast('Data cleared');}
@@ -5113,7 +5256,7 @@ async function initApp(){
   seedWishlistFromRoadmap();
 }
 
-const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog'];
+const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog'];
 async function checkBackendHealth(){
   if(!CFG.apiUrl)return;
   try{

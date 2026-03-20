@@ -37,6 +37,7 @@ const SCHEMAS = {
   TripLog: ['id','vehicleId','date','startOdo','endOdo','distance','purpose','tripType','route','notes','createdAt'],
   HomeInventory: ['id','category','name','qty','unit','location','serial','warranty','purchase_date','cost','notes'],
   PrimaStock:    ['id','category','name','qty','unit','supplier','reorder_at','cost_per_unit','notes','updatedAt'],
+  DailyLog:      ['id','date','tasksCompleted','taskTarget','timeLogged','timeTarget','journaled','mood','streakDay','notes','createdAt'],
 };
 
 function doGet(e) {
