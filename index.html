@@ -2731,6 +2731,15 @@ function toggleVehicleTodo(id){
   renderVehicles();
 }
 
+function editTodoDate(id){
+  const t=DB.vehicle_todos.find(t=>String(t.id)===String(id));if(!t)return;
+  const newDate=prompt('Completion date (YYYY-MM-DD):',t.completedDate||TODAY);
+  if(!newDate||newDate===t.completedDate)return;
+  t.completedDate=newDate;
+  apiPost('update','VehicleTodos',{id:String(id),patch:{completedDate:newDate}});
+  renderVehicles();toast('Date updated');
+}
+
 function delVehicleTodo(id){
   const t=DB.vehicle_todos.find(t2=>String(t2.id)===String(id));
   if(!confirm(`Delete todo?\n\n${t?.description||'?'}`))return;
@@ -4671,7 +4680,7 @@ function renderVehicleTodosSub(box,v){
           <span style="${isDone?'text-decoration:line-through;':''}">${esc(t.description)}</span>
           ${t.partNumber?`<span style="font-size:10px;color:var(--blue);margin-left:6px;font-family:'DM Mono',monospace">🔩 ${esc(t.partNumber)}</span>`:''}
           <span style="font-size:10px;color:var(--t3);margin-left:6px">${catInfo}</span>
-          ${isDone&&t.completedDate?`<span style="font-size:10px;color:var(--t3);margin-left:6px;font-family:'DM Mono',monospace">✓ ${t.completedDate}</span>`:''}
+          ${isDone&&t.completedDate?`<span style="font-size:10px;color:var(--t3);margin-left:6px;font-family:'DM Mono',monospace;cursor:pointer" onclick="editTodoDate('${t.id}')" title="Click to change date">✓ ${t.completedDate}</span>`:''}
           ${t.notes?`<div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(t.notes)}</div>`:''}
         </div>
         <button class="btn-icon" onclick="delVehicleTodo('${t.id}')">🗑</button>
