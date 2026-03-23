@@ -943,6 +943,12 @@ async function loadAll(){
   DB.fuel_logs.forEach(f=>{if(f.date)f.date=normalizeDate(f.date);});
   DB.service_logs.forEach(s=>{if(s.date)s.date=normalizeDate(s.date);});
   DB.vehicle_expenses.forEach(e=>{if(e.date)e.date=normalizeDate(e.date);});
+  // Normalize booleans (Sheets stores True/False, app expects '1'/'0')
+  const normBool=v=>v===true||v==='true'||v==='True'||v==='TRUE'||v==='1'||v===1?'1':'0';
+  DB.vehicle_todos.forEach(t=>{t.isDone=normBool(t.isDone);});
+  DB.todos.forEach(t=>{t.done=normBool(t.done);});
+  DB.incidents.forEach(i=>{i.resolved=normBool(i.resolved);});
+  DB.service_reminders.forEach(r=>{r.isActive=normBool(r.isActive);});
   // Set default vehicle
   if(DB.vehicles.length && !curVeh) curVeh=DB.vehicles[0].id;
   calEvents=await calFetch(14);
@@ -4009,7 +4015,7 @@ function renderServicesSub(box,v){
     <div class="row"><button class="btn btn-primary" onclick="addIncident()">+ Log Incident</button></div>`;
   if(incidents.length){
     incidents.forEach(i=>{
-      const resolved=i.resolved===true||i.resolved==='true'||i.resolved==='TRUE'||i.resolved===1||i.resolved==='1'||i.isResolved==='1'||i.isResolved===true;
+      const resolved=i.resolved==='1';
       const incBg=resolved?'#0a1a0a22':'#1a080822';
       const incColor=resolved?'var(--green)':'var(--red)';
       h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto;margin-top:6px">
