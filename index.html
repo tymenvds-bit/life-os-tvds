@@ -3975,7 +3975,7 @@ function renderServicesSub(box,v){
     <div class="row"><button class="btn btn-primary" onclick="addIncident()">+ Log Incident</button></div>`;
   if(incidents.length){
     incidents.forEach(i=>{
-      const resolved=i.resolved===true||i.resolved==='true'||i.isResolved==='1'||i.isResolved===true;
+      const resolved=i.resolved===true||i.resolved==='true'||i.resolved==='TRUE'||i.resolved===1||i.resolved==='1'||i.isResolved==='1'||i.isResolved===true;
       const incBg=resolved?'#0a1a0a22':'#1a080822';
       const incColor=resolved?'var(--green)':'var(--red)';
       h+=`<div class="log-row" style="grid-template-columns:80px auto 1fr auto;margin-top:6px">
@@ -5532,6 +5532,7 @@ function toggleAiChat(){
     document.getElementById('ai-chat-input').focus();
   }
 }
+let _aiPendingActions=[];
 async function sendAiChat(){
   const input=document.getElementById('ai-chat-input');
   const msg=input.value.trim();if(!msg)return;
@@ -5541,36 +5542,90 @@ async function sendAiChat(){
   msgs.innerHTML+=`<div style="margin-bottom:8px;text-align:right"><span style="background:var(--gold);color:#000;padding:6px 12px;border-radius:12px 12px 0 12px;display:inline-block;max-width:85%;font-size:13px">${esc(msg)}</span></div>`;
   msgs.scrollTop=msgs.scrollHeight;
   const context=buildAiContext();
-  const prompt=`You are an AI assistant for Life OS, a personal productivity and vehicle management app owned by Tijmen. You have access to his current data summary below.
+  const vList=DB.vehicles.map(v=>`id:${v.id} name:"${v.name}" reg:${v.regNumber||'?'}`).join(', ');
+  const prompt=`You are an AI assistant for Life OS, a personal productivity and vehicle management app owned by Tijmen.
 
 CURRENT DATA:
 ${context}
 
+VEHICLES: ${vList}
+
 USER REQUEST: ${msg}
 
-CAPABILITIES you can suggest or help with:
-- Tasks: add, view, prioritize, mark done
-- Vehicles: fuel logs, service reminders, expenses, parts inventory, tyre management, trip logs
-- Time tracking: log time blocks
-- Notes: create, search
-- Journal: write entries
-- Calendar: view events
+RESPONSE FORMAT:
+If the user asks to DO something (add expense, log fuel, add todo, update data, etc), respond with BOTH:
+1. A short confirmation message explaining what you'll do
+2. A JSON actions block that the app will execute
 
-If the user asks to DO something (add a task, log time, etc), describe exactly what they should do in the app OR provide the data they asked for.
-If the user asks about data, answer with specific numbers from the context.
-If the app doesn't have a feature for their request, say so and suggest they add it to the App Wishlist.
-Be concise — 2-4 sentences max. Use Rands (R) for money. Tijmen's voice: direct, practical.`;
+Wrap actions in <actions>[...json...]</actions> tags. Available action types:
+
+{"type":"expense","sheet":"VehicleExpenses","row":{"vehicleId":"...","date":"YYYY-MM-DD","category":"insurance|licence|tracker|tyres|co-payment|parts|accessories|tolls|maintenance|other","description":"...","amount":number,"frequency":"once|monthly|quarterly|annual","endDate":"","supplier":"","notes":""}}
+{"type":"fuel","sheet":"FuelLogs","row":{"vehicleId":"...","date":"YYYY-MM-DD","odometer":number,"litres":number,"totalCost":number,"pricePerL":number,"station":"","fuelType":"Unleaded 95","isFullTank":"1","paymentMethod":"","notes":""}}
+{"type":"todo","sheet":"VehicleTodos","row":{"vehicleId":"...","category":"maintenance|nice-to-have|in-car|sound|cosmetic","description":"...","isDone":"0","completedDate":"","notes":""}}
+{"type":"task","sheet":"Todos","row":{"title":"...","category":"","priority":"normal|urgent","status":"open","due":"","notes":""}}
+{"type":"reminder","sheet":"ServiceReminders","row":{"vehicleId":"...","name":"...","intervalKm":number,"intervalMonths":number,"lastServiceDate":"YYYY-MM-DD","lastServiceOdo":number,"nextDueDate":"YYYY-MM-DD","nextDueOdo":number,"isActive":"1"}}
+{"type":"update","sheet":"SheetName","id":"rowId","patch":{"field":"value"}}
+{"type":"time","sheet":"Time","row":{"date":"YYYY-MM-DD","description":"...","category":"...","duration":minutes}}
+{"type":"note","sheet":"Notes","row":{"title":"...","body":"...","category":"","tags":""}}
+{"type":"journal","sheet":"Journal","row":{"date":"YYYY-MM-DD","body":"...","mood":number}}
+{"type":"check","sheet":"VehicleChecks","row":{"vehicleId":"...","date":"YYYY-MM-DD","odometer":number,"checkType":"battery|tyres","data":"JSON string","notes":""}}
+{"type":"incident","sheet":"Incidents","row":{"vehicleId":"...","date":"YYYY-MM-DD","description":"...","thirdParty":"","claimNumber":"","coPayment":0,"totalCost":0,"resolved":false,"notes":""}}
+
+Match vehicles by registration or name. Today is ${TODAY}.
+If the user asks about data, answer with specific numbers — no actions needed.
+Be concise — 2-4 sentences max. Use Rands (R) for money. Direct, practical tone.`;
   msgs.innerHTML+=`<div id="ai-typing" style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;font-size:12px;color:var(--t3)">Thinking...</span></div>`;
   msgs.scrollTop=msgs.scrollHeight;
   try{
-    const response=await claude(prompt,'Concise Life OS assistant. 2-4 sentences max.',500);
+    const response=await claude(prompt,'Life OS assistant that executes actions. Return <actions>[...]</actions> JSON for any data changes.',800);
     document.getElementById('ai-typing')?.remove();
-    msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;max-width:85%;font-size:13px;line-height:1.4">${esc(response)}</span></div>`;
+    const actMatch=response.match(/<actions>([\s\S]*?)<\/actions>/);
+    let textPart=response.replace(/<actions>[\s\S]*?<\/actions>/,'').trim();
+    msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;max-width:85%;font-size:13px;line-height:1.4">${esc(textPart)}</span></div>`;
+    if(actMatch){
+      try{
+        _aiPendingActions=JSON.parse(actMatch[1]);
+        const summary=_aiPendingActions.map(a=>`• ${a.type}: ${a.row?.description||a.row?.title||a.row?.name||a.patch?.resolved!==undefined?'update':'action'}`).join('\n');
+        const actId='ai-act-'+Date.now();
+        msgs.innerHTML+=`<div id="${actId}" style="margin-bottom:8px"><div style="background:var(--bg3);padding:8px 12px;border-radius:8px;border:1px solid var(--gold);max-width:85%"><div style="font-size:11px;color:var(--t3);margin-bottom:6px">${_aiPendingActions.length} action(s) ready</div><button onclick="execAiActions('${actId}')" style="background:var(--gold);color:#000;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Execute</button> <button onclick="document.getElementById('${actId}').remove();_aiPendingActions=[];" style="background:var(--bg2);color:var(--t3);border:1px solid var(--bg3);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Cancel</button></div></div>`;
+      }catch(je){
+        msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:4px 8px;border-radius:6px;font-size:10px;color:var(--orange)">Could not parse actions — do it manually in the app.</span></div>`;
+      }
+    }
   }catch(e){
     document.getElementById('ai-typing')?.remove();
     msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px;display:inline-block;color:var(--red);font-size:12px">Error — check API key in Settings</span></div>`;
   }
   msgs.scrollTop=msgs.scrollHeight;
+}
+async function execAiActions(containerId){
+  const container=document.getElementById(containerId);
+  if(!container||!_aiPendingActions.length)return;
+  container.querySelector('button').disabled=true;
+  container.querySelector('button').textContent='Executing...';
+  const msgs=document.getElementById('ai-chat-msgs');
+  let ok=0,fail=0;
+  for(const act of _aiPendingActions){
+    try{
+      if(act.type==='update'){
+        await apiPost('update',act.sheet,{id:act.id,patch:act.patch});
+        const db=DB[act.sheet.toLowerCase()]||DB[Object.keys(DB).find(k=>k.replace(/_/g,'').toLowerCase()===act.sheet.toLowerCase())];
+        if(db){const row=db.find(r=>String(r.id)===String(act.id));if(row)Object.assign(row,act.patch);}
+      }else{
+        const row={id:uid(),...act.row,createdAt:niso()};
+        await apiPost('append',act.sheet,{row});
+        const key=act.sheet.toLowerCase().replace(/([a-z])([A-Z])/g,'$1_$2').toLowerCase();
+        if(DB[key])DB[key].push(row);
+        else if(DB[act.sheet.toLowerCase()])DB[act.sheet.toLowerCase()].push(row);
+      }
+      ok++;
+    }catch(e){fail++;}
+  }
+  container.remove();
+  _aiPendingActions=[];
+  msgs.innerHTML+=`<div style="margin-bottom:8px"><span style="background:var(--bg3);padding:6px 12px;border-radius:12px 12px 12px 0;display:inline-block;font-size:12px;color:${fail?'var(--orange)':'var(--green)'}">${ok} action(s) done${fail?`, ${fail} failed`:''}</span></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  renderAll();toast(`✅ ${ok} action(s) executed`);
 }
 function buildAiContext(){
   const openTasks=DB.todos.filter(t=>t.done!=='1'&&t.status!=='done');
