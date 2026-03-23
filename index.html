@@ -753,8 +753,38 @@ async function apiPost(action,sheet,data){
     if(result.error){console.warn('⚠️ apiPost error:',action,sheet,result.error);toast('⚠️ Sync failed: '+result.error);}
     else{console.log('✅ apiPost:',action,sheet,data.id||'');LS.set('los_last_sync',new Date().toISOString());}
     return result;
-  }catch(e){console.error('❌ apiPost network error:',action,sheet,e.message);toast('⚠️ Offline — saved locally only');return{ok:false,local:true};}
+  }catch(e){
+    console.error('❌ apiPost network error:',action,sheet,e.message);
+    // Queue for retry when back online
+    const queue=LS.get('los_offline_queue',[]);
+    queue.push({action,sheet,data,ts:Date.now()});
+    LS.set('los_offline_queue',queue);
+    setSyncBadge('offline');
+    toast(`⚠️ Offline — queued (${queue.length} pending)`);
+    return{ok:false,local:true,queued:true};
+  }
 }
+
+// Flush offline queue when back online
+async function flushOfflineQueue(){
+  const queue=LS.get('los_offline_queue',[]);
+  if(!queue.length)return;
+  console.log(`🔄 Flushing ${queue.length} queued operations...`);
+  const failed=[];
+  for(const item of queue){
+    try{
+      const r=await fetch(CFG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:item.action,sheet:item.sheet,...item.data})});
+      const text=await r.text();
+      const result=JSON.parse(text);
+      if(result.error){failed.push(item);console.warn('⚠️ Queue retry failed:',item.sheet,result.error);}
+      else console.log('✅ Queue flushed:',item.action,item.sheet);
+    }catch(e){failed.push(item);}
+  }
+  LS.set('los_offline_queue',failed);
+  if(failed.length){toast(`⚠️ ${queue.length-failed.length} synced, ${failed.length} still pending`);}
+  else{toast(`✅ ${queue.length} offline entries synced`);setSyncBadge('ok');}
+}
+window.addEventListener('online',()=>{setTimeout(flushOfflineQueue,2000);});
 
 async function calFetch(days=14){
   if(!CFG.apiUrl) return [];
@@ -1032,14 +1062,14 @@ Return object with these keys (omit empty arrays):
 "time":[{"title":"","category":"","duration":MINUTES,"date":"YYYY-MM-DD"}],
 "journal":[{"body":"","mood":"1-5","tags":[]}],
 "calendar":[{"title":"","date":"YYYY-MM-DD","time":"HH:MM","notes":""}],
-"fuel":[{"vehicleId":"VEHICLE_ID","odometer":0,"litres":0,"cost_per_l":0,"station":"","fuel_type":"","date":"YYYY-MM-DD"}],
+"fuel":[{"vehicleId":"VEHICLE_ID","odometer":0,"litres":0,"cost_per_l":0,"total_cost":0,"station":"","fuel_type":"","date":"YYYY-MM-DD"}],
 "summary":"one sentence summary"}
 
 CRITICAL RULES:
 - task_updates: FIRST scan the input for ANY mention of work related to an existing task above. Match by TOPIC — if user says "wrote the MR DIY letter" match the task about MR DIY. Use the EXACT id value from the matched task. Set progress (what was done today), status (waiting=ball in someone else's court, in-progress=actively working on it, done=fully completed), and optionally new due date.
 - todos: ONLY for genuinely NEW action items that do NOT relate to any existing task above. Before adding a todo, verify it does not match any existing task topic. If in doubt, prefer task_updates.
 - time: Past activities. Use TOTAL DURATION in minutes only. Do NOT guess specific clock start/end times. Just estimate how long the activity took (e.g. 30, 60, 90 minutes).
-- journal: ALWAYS generate exactly one journal entry. Infer mood (1=terrible, 2=bad, 3=neutral, 4=good, 5=great) from the overall tone. Write the journal body in TIJMEN'S VOICE: short punchy sentences, stacked declaratives, dashes for mid-thought breaks. English with natural Afrikaans words woven in (dis, maar, net, moeg, ja-nee). Emotions show through facts and framing — never name feelings directly. Understate rather than overstate. Dry humour when appropriate. No corporate jargon, no therapy-speak, no flowery language. Feels like a man writing to himself at 21:00 after a long day. 3-5 sentences max. ZAR amounts (R1.6M), metric units. No profanity.
+- journal: ALWAYS generate exactly one journal entry. Infer mood (1=terrible, 2=bad, 3=neutral, 4=good, 5=great) from the overall tone. CRITICAL: Keep the user's EXACT words — only fix obvious spelling mistakes and grammar errors. Do NOT rewrite, rephrase, add flair, or change tone. The journal is personal — preserve exactly what the user wrote, just cleaned up. If the input is short, keep it short. If it has Afrikaans words, keep them. Output should read like the user typed it, not like an AI wrote it.
 - notes: Reference information ONLY — decisions made, meeting outcomes, specs, prices, contacts, factual info worth preserving. Notes are NOT action items (those are todos). Only create a note when there is specific factual/reference content to save.
 - calendar: Future scheduled events ONLY when the user provides BOTH a specific date AND a specific time. If either is missing or vague, create a todo with a due date instead.
 - fuel: Vehicle fill-ups only. Available vehicles: ${DB.vehicles.filter(vv=>vv.isActive!=='0').map(vv=>`id:${vv.id} name:${vv.name}`).join(', ')||'none yet'}. Use the EXACT vehicleId from this list. If unsure which vehicle, use the first one.
@@ -1164,16 +1194,20 @@ function buildPreview(parsed){
 
   // Fuel
   if(parsed.fuel?.length){
-    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">⛽ ${parsed.fuel.length} fuel fill${parsed.fuel.length>1?'s':''}</div>`;
+    html+=`<div class="preview-card"><div class="preview-title" style="color:var(--blue)">⛽ ${parsed.fuel.length} FUEL FILL${parsed.fuel.length>1?'S':''}</div><div style="font-size:10px;color:var(--t3);margin-bottom:6px;font-style:italic">Decisions, meeting outcomes, reference info</div>`;
     parsed.fuel.forEach((f,i)=>{
       html+=`<div class="preview-item" data-section="fuel" data-index="${i}">
         <button class="del-btn" onclick="removePreviewItem('fuel',${i})">✕</button>
         <div class="pi-body">
           <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:12px">
             <select data-field="vehicleId">${DB.vehicles.filter(vv=>vv.isActive!=='0').map(vv=>`<option value="${vv.id}" ${(String(f.vehicleId)===String(vv.id)||f.vehicle===vv.name)?'selected':''}>${esc(vv.name)}${vv.year?' ('+vv.year+')':''}</option>`).join('')||'<option value="">No vehicles</option>'}</select>
-            <input data-field="litres" type="number" value="${f.litres||''}" placeholder="L" style="width:55px">
-            <span style="color:var(--t3)">L @</span>
+            <input data-field="odometer" type="number" value="${f.odometer||''}" placeholder="ODO (km)" style="width:90px">
+          </div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:12px;margin-top:4px">
+            <input data-field="litres" type="number" value="${f.litres||''}" placeholder="Litres" step="0.001" style="width:70px">
+            <input data-field="total_cost" type="number" value="${f.total_cost||''}" placeholder="Total R" step="0.01" style="width:80px">
             <input data-field="cost_per_l" type="number" value="${f.cost_per_l||''}" placeholder="R/L" step="0.01" style="width:65px">
+            <input data-field="station" value="${esc(f.station||'')}" placeholder="Station" style="width:80px">
           </div>
         </div>
       </div>`;
@@ -5346,7 +5380,7 @@ async function initApp(){
   document.getElementById('bk-date')&&(document.getElementById('bk-date').value=TODAY);
   // veh-date removed — vehicle module now uses inline date fields
   applyTheme();setInterval(applyTheme,60000); // re-check theme every minute for auto sunrise/sunset
-  await loadAll();loadTodayBoard();renderAll();
+  await loadAll();await flushOfflineQueue();loadTodayBoard();renderAll();
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
   // Push notification for overdue vehicle services
   checkServiceNotifications();
