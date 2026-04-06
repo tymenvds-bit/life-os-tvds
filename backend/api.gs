@@ -38,6 +38,7 @@ const SCHEMAS = {
   HomeInventory: ['id','category','name','qty','unit','location','serial','warranty','purchase_date','cost','notes'],
   PrimaStock:    ['id','category','name','qty','unit','supplier','reorder_at','cost_per_unit','notes','updatedAt'],
   DailyLog:      ['id','date','tasksCompleted','taskTarget','timeLogged','timeTarget','journaled','mood','streakDay','notes','createdAt'],
+  AppWishlist:   ['id','text','type','priority','date','done','createdAt'],
 };
 
 function doGet(e) {

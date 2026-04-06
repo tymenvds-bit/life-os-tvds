@@ -929,8 +929,8 @@ function emailToTask(title){
 
 async function loadAll(){
   setSyncBadge('pending');
-  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog'];
-  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos','VehicleParts':'vehicle_parts','VehicleTyres':'vehicle_tyres','TyreRotations':'tyre_rotations','Modifications':'modifications','Incidents':'incidents','TripLog':'trip_log','DailyLog':'daily_log'};
+  const sheets=['Todos','Notes','Time','Journal','GQ_Patrol','GU_Patrol','HomeInventory','PrimaStock','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog','AppWishlist'];
+  const SHEET_MAP={'Todos':'todos','Notes':'notes','Time':'time','Journal':'journal','GQ_Patrol':'gq_patrol','GU_Patrol':'gu_patrol','HomeInventory':'home_inventory','PrimaStock':'prima_stock','FuelLogs':'fuel_logs','ServiceLogs':'service_logs','ServiceReminders':'service_reminders','VehicleExpenses':'vehicle_expenses','VehicleComparisons':'vehicle_comparisons','VehicleChecks':'vehicle_checks','VehicleTodos':'vehicle_todos','VehicleParts':'vehicle_parts','VehicleTyres':'vehicle_tyres','TyreRotations':'tyre_rotations','Modifications':'modifications','Incidents':'incidents','TripLog':'trip_log','DailyLog':'daily_log','AppWishlist':'app_wishlist'};
   await Promise.all(sheets.map(async s=>{
     const rows=await apiFetch(s);
     const key=SHEET_MAP[s]||s.toLowerCase();
@@ -949,6 +949,18 @@ async function loadAll(){
   DB.todos.forEach(t=>{t.done=normBool(t.done);});
   DB.incidents.forEach(i=>{i.resolved=normBool(i.resolved);});
   DB.service_reminders.forEach(r=>{r.isActive=normBool(r.isActive);});
+  DB.app_wishlist.forEach(w=>{w.done=normBool(w.done);});
+  // Auto-migrate wishlist from localStorage to Sheets
+  if(!DB.app_wishlist.length){
+    const legacy=LS.get('los_app_wishlist',[]);
+    if(legacy.length){
+      const migrated=legacy.map(item=>({id:uid(),text:item.text||'',type:item.type||'feature',priority:item.priority||'medium',date:item.date||TODAY,done:item.done?'1':'0',createdAt:niso()}));
+      DB.app_wishlist=migrated;
+      apiPost('write','AppWishlist',{rows:migrated});
+      localStorage.removeItem('los_app_wishlist');
+      toast('Wishlist migrated to cloud');
+    }
+  }
   // Set default vehicle
   if(DB.vehicles.length && !curVeh) curVeh=DB.vehicles[0].id;
   calEvents=await calFetch(14);
@@ -5399,7 +5411,7 @@ async function initApp(){
   seedWishlistFromRoadmap();
 }
 
-const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog'];
+const EXPECTED_SHEETS=['Todos','Notes','Time','Journal','Vehicles','FuelLogs','ServiceLogs','ServiceReminders','VehicleExpenses','VehicleComparisons','VehicleChecks','VehicleTodos','HomeInventory','PrimaStock','VehicleParts','VehicleTyres','TyreRotations','Modifications','Incidents','TripLog','DailyLog','AppWishlist'];
 async function checkBackendHealth(){
   if(!CFG.apiUrl)return;
   try{
@@ -5688,7 +5700,7 @@ function buildAiContext(){
   if(recentNotes) ctx+=`Recent notes: ${recentNotes}\n`;
   const todayJournal=DB.journal.find(j=>j.date===TODAY);
   if(todayJournal) ctx+=`Journal today: mood ${todayJournal.mood}/5\n`;
-  const wishlist=LS.get('los_app_wishlist',[]);
+  const wishlist=DB.app_wishlist||[];
   if(wishlist.length) ctx+=`App wishlist: ${wishlist.length} items\n`;
   return ctx;
 }
@@ -5696,7 +5708,7 @@ function buildAiContext(){
 // --- App Wishlist & Dev Notes ---
 function openAppWishlist(){
   const modal=document.getElementById('help-modal');const body=document.getElementById('help-modal-body');
-  const items=LS.get('los_app_wishlist',[]);
+  const items=DB.app_wishlist||[];
   const typeEmoji={feature:'✨',bug:'🐛',improvement:'🔧',note:'📝'};
   const prioColor={high:'var(--red)',medium:'var(--orange)',low:'var(--t3)'};
   let h=`<div style="padding:16px">
@@ -5726,31 +5738,29 @@ function openAppWishlist(){
   if(!items.length){
     h+=`<div style="text-align:center;color:var(--t3);padding:20px;font-size:12px">No items yet. Add feature requests, bug reports, or development notes here.</div>`;
   } else {
-    const open=items.filter(i=>!i.done);
-    const done=items.filter(i=>i.done);
+    const open=items.filter(i=>i.done!=='1');
+    const done=items.filter(i=>i.done==='1');
     if(open.length){
       open.forEach(item=>{
-        const idx=items.indexOf(item);
         h+=`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--bg3)">
-          <input type="checkbox" onchange="toggleWishlistItem(${idx})" style="margin-top:3px;width:16px;height:16px">
+          <input type="checkbox" onchange="toggleWishlistItem('${item.id}')" style="margin-top:3px;width:16px;height:16px">
           <div style="flex:1">
             <span>${typeEmoji[item.type]||'📝'} ${esc(item.text)}</span>
             <div style="font-size:10px;color:var(--t3);margin-top:2px">
               <span style="color:${prioColor[item.priority]||'var(--t3)'}">${item.priority}</span> · ${item.date}
             </div>
           </div>
-          <button onclick="delWishlistItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px">🗑</button>
+          <button onclick="delWishlistItem('${item.id}')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px">🗑</button>
         </div>`;
       });
     }
     if(done.length){
       h+=`<div style="margin-top:12px;font-size:11px;color:var(--t3)">Completed (${done.length})</div>`;
       done.forEach(item=>{
-        const idx=items.indexOf(item);
         h+=`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;opacity:0.5">
-          <input type="checkbox" checked onchange="toggleWishlistItem(${idx})" style="width:16px;height:16px">
+          <input type="checkbox" checked onchange="toggleWishlistItem('${item.id}')" style="width:16px;height:16px">
           <span style="text-decoration:line-through;font-size:12px;flex:1">${typeEmoji[item.type]||'📝'} ${esc(item.text)}</span>
-          <button onclick="delWishlistItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:12px">🗑</button>
+          <button onclick="delWishlistItem('${item.id}')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:12px">🗑</button>
         </div>`;
       });
     }
@@ -5761,49 +5771,53 @@ function openAppWishlist(){
   body.innerHTML=h;modal.style.display='flex';
 }
 function addWishlistItem(){
+  if(_locks.addWish)return;
   const text=document.getElementById('wish-text')?.value?.trim();
   if(!text){toast('Enter a description');return;}
   const type=document.getElementById('wish-type')?.value||'feature';
   const priority=document.getElementById('wish-priority')?.value||'medium';
-  const items=LS.get('los_app_wishlist',[]);
-  items.unshift({text,type,priority,date:TODAY,done:false});
-  LS.set('los_app_wishlist',items);
+  const entry={id:uid(),text,type,priority,date:TODAY,done:'0',createdAt:niso()};
+  _locks.addWish=true;
+  DB.app_wishlist.unshift(entry);
+  apiPost('append','AppWishlist',{row:entry});
+  _locks.addWish=false;
   openAppWishlist();
   toast('Added to wishlist');
 }
-function toggleWishlistItem(idx){
-  const items=LS.get('los_app_wishlist',[]);
-  if(items[idx]) items[idx].done=!items[idx].done;
-  LS.set('los_app_wishlist',items);
+function toggleWishlistItem(id){
+  const item=DB.app_wishlist.find(i=>String(i.id)===String(id));
+  if(!item)return;
+  item.done=item.done==='1'?'0':'1';
+  apiPost('update','AppWishlist',{id,patch:{done:item.done}});
   openAppWishlist();
 }
-function delWishlistItem(idx){
-  const items=LS.get('los_app_wishlist',[]);
-  items.splice(idx,1);
-  LS.set('los_app_wishlist',items);
+function delWishlistItem(id){
+  if(!confirm('Delete this wishlist item?'))return;
+  DB.app_wishlist=DB.app_wishlist.filter(i=>String(i.id)!==String(id));
+  apiPost('delete','AppWishlist',{id});
   openAppWishlist();
 }
 function seedWishlistFromRoadmap(){
-  const items=LS.get('los_app_wishlist',[]);
-  if(items.length>0)return; // already has items, don't overwrite
+  if(DB.app_wishlist.length>0)return;
   const roadmap=[
-    {text:'Meal Planning & Kitchen AI — pantry tracker, AI recipe suggestions, monthly meal planner, auto grocery list, recipe library, household profiles (Tijmen + wife dietary prefs)',type:'feature',priority:'high',date:'2026-03-20',done:false},
-    {text:'Compliance Calendar & Team Visibility — import Excel compliance items, recurring auto-generation, dashboard widget, team view (shared read-only URL), notifications',type:'feature',priority:'high',date:'2026-03-20',done:false},
-    {text:'ClickUp Migration — export 200+ items, AI categorise (active/someday/dead), import active tasks to Life OS, retire ClickUp',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Voice Capture — browser SpeechRecognition API for hands-free input while driving',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Smart Task Management — daily focus list (AI picks 3-5), Eisenhower auto-sort, weekly review prompt, task aging/decay, context batching, energy matching',type:'feature',priority:'high',date:'2026-03-20',done:false},
-    {text:'Spiritual Tracker — verse log, prophecies/words received, theme tags, reflection notes, AI connection ("show verses about provision")',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Philosophy & Quotes Tracker — quote capture, book tracker (Audible/physical/Kindle), reading log, tags, random quote of the day',type:'feature',priority:'low',date:'2026-03-20',done:false},
-    {text:'AI Usage & Cost Tracking — auto-track tokens/cost per Claude call, monthly subscription tracker, dashboard widget',type:'feature',priority:'low',date:'2026-03-20',done:false},
-    {text:'Decision Tracker — decision log, outcome tracking (30/90 day review), AI patterns, linked to tasks',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Excel import for Red Patrol expense/service data from existing spreadsheet',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Licence renewal tracking via ServiceReminders',type:'improvement',priority:'low',date:'2026-03-20',done:false},
-    {text:'Parts inventory import from Red Patrol Excel (Nissan part numbers)',type:'feature',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Today\'s Board sync across devices via Google Sheets (currently localStorage only)',type:'bug',priority:'medium',date:'2026-03-20',done:false},
-    {text:'Duplicate item prevention — disable Save All button during save to prevent double-click',type:'bug',priority:'low',date:'2026-03-20',done:false},
-    {text:'LC70 resale override — custom resale curve for vehicles that appreciate (70 Series, classic 4x4s)',type:'improvement',priority:'medium',date:'2026-03-20',done:false},
+    {id:uid(),text:'Meal Planning & Kitchen AI — pantry tracker, AI recipe suggestions, monthly meal planner, auto grocery list, recipe library, household profiles (Tijmen + wife dietary prefs)',type:'feature',priority:'high',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Compliance Calendar & Team Visibility — import Excel compliance items, recurring auto-generation, dashboard widget, team view (shared read-only URL), notifications',type:'feature',priority:'high',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'ClickUp Migration — export 200+ items, AI categorise (active/someday/dead), import active tasks to Life OS, retire ClickUp',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Voice Capture — browser SpeechRecognition API for hands-free input while driving',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Smart Task Management — daily focus list (AI picks 3-5), Eisenhower auto-sort, weekly review prompt, task aging/decay, context batching, energy matching',type:'feature',priority:'high',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Spiritual Tracker — verse log, prophecies/words received, theme tags, reflection notes, AI connection ("show verses about provision")',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Philosophy & Quotes Tracker — quote capture, book tracker (Audible/physical/Kindle), reading log, tags, random quote of the day',type:'feature',priority:'low',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'AI Usage & Cost Tracking — auto-track tokens/cost per Claude call, monthly subscription tracker, dashboard widget',type:'feature',priority:'low',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Decision Tracker — decision log, outcome tracking (30/90 day review), AI patterns, linked to tasks',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Excel import for Red Patrol expense/service data from existing spreadsheet',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Licence renewal tracking via ServiceReminders',type:'improvement',priority:'low',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Parts inventory import from Red Patrol Excel (Nissan part numbers)',type:'feature',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Today\'s Board sync across devices via Google Sheets (currently localStorage only)',type:'bug',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'Duplicate item prevention — disable Save All button during save to prevent double-click',type:'bug',priority:'low',date:'2026-03-20',done:'0',createdAt:niso()},
+    {id:uid(),text:'LC70 resale override — custom resale curve for vehicles that appreciate (70 Series, classic 4x4s)',type:'improvement',priority:'medium',date:'2026-03-20',done:'0',createdAt:niso()},
   ];
-  LS.set('los_app_wishlist',roadmap);
+  DB.app_wishlist=roadmap;
+  apiPost('write','AppWishlist',{rows:roadmap});
 }
 function checkAppCapacity(){
   const lines=document.documentElement.outerHTML.split('\n').length;
