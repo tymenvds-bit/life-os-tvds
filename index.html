@@ -1287,9 +1287,11 @@ function collectPreviewEdits(){
 }
 
 async function commitCapture(){
+  if(_locks.commitCapture)return;
   try{
+  _locks.commitCapture=true;
   const p=captureData;
-  if(!p){toast('Nothing to save');return;}
+  if(!p){_locks.commitCapture=false;toast('Nothing to save');return;}
   // Show saving state
   const saveBtn=document.querySelector('#cap-preview .btn-primary');
   if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<span class="spinner"></span> Saving…';}
@@ -1347,6 +1349,7 @@ async function commitCapture(){
   renderAll();
   toast('Saved: '+added.join(', '));
   }catch(err){console.error('commitCapture ERROR:',err);toast('Save error: '+err.message);}
+  finally{_locks.commitCapture=false;}
 }
 
 // ═══ TODOS ═══
@@ -2312,6 +2315,12 @@ function delServiceLog(id){
 }
 
 // --- Service Reminders ---
+function prefillReminder(name,km,months){
+  const el=id=>document.getElementById(id);
+  if(el('sr-name'))el('sr-name').value=name;
+  if(el('sr-km'))el('sr-km').value=km||'';
+  if(el('sr-months'))el('sr-months').value=months||'';
+}
 function addServiceReminder(){
   if(!curVeh){toast('Select a vehicle first');return;}
   const g=id=>document.getElementById(id)?.value||'';
@@ -2590,7 +2599,12 @@ async function runReplacementAnalysis(vehicleId){
     keepCum+=fuel+maint+ins+lic+contingency;
     keepYears.push({year:yr,fuel,maintenance:maint,insurance:ins,licence:lic,other:contingency,cumulative:keepCum});
   }
-  const keepResale=v.name.toLowerCase().includes('gq')?100000:Math.round(stats.purchasePrice*0.15);
+  // Resale: user override from UI, or auto-detect classic/appreciating vehicles
+  const resaleOverrideEl=document.getElementById('ec-keep-resale');
+  const resaleOverride=resaleOverrideEl?+resaleOverrideEl.value:0;
+  const nameLC=v.name.toLowerCase();
+  const isClassic=/gq|gu|patrol|land cruiser|70 series|defender|fj|bj|lj|hj/.test(nameLC)||(+v.year||2000)<2000;
+  const keepResale=resaleOverride||( isClassic?Math.max(100000,Math.round(stats.purchasePrice*0.8)):Math.round(stats.purchasePrice*0.15));
 
   // Alternative scenarios — calculated in code
   const altScenarios=comparisons.map(c=>{
@@ -2605,13 +2619,14 @@ async function runReplacementAnalysis(vehicleId){
     // Finance: PMT formula (0 if cash/no term)
     const monthlyPmt=term>0?Math.round(price*rate*Math.pow(1+rate,term)/(Math.pow(1+rate,term)-1)):0;
     const annualFinance=monthlyPmt*12;
-    // Depreciation: standard 20%/12%, but value-retaining vehicles (LC70, Hilux, Defender, Jimny) use 10%/7%
+    // Depreciation curves: classic/appreciating (flat), value-retaining (10%/7%), standard (20%/12%)
     const nameLC=(c.comparisonName||'').toLowerCase();
-    const valueRetainer=/land cruiser|hilux|defender|jimny|wrangler|70 series|79|76|78/.test(nameLC);
+    const isClassicAlt=/gq|gu|patrol 60|fj40|fj45|bj|lj|hj|series [iI]+|defender 90|defender 110/.test(nameLC)&&price<300000;
+    const valueRetainer=!isClassicAlt&&/land cruiser|hilux|defender|jimny|wrangler|70 series|79|76|78/.test(nameLC);
     let vehicleValue=price;
     const years=[];let cum=0;
     for(let yr=1;yr<=10;yr++){
-      const depRate=valueRetainer?(yr===1?0.10:0.07):(yr===1?0.20:0.12);
+      const depRate=isClassicAlt?0:valueRetainer?(yr===1?0.10:0.07):(yr===1?0.20:0.12);
       const dep=Math.round(vehicleValue*depRate);
       vehicleValue-=dep;
       const fuel=Math.round(altKmYr/kml*FUEL_PRICE*Math.pow(1+FUEL_INFL,yr-1));
@@ -3965,6 +3980,14 @@ function renderServicesSub(box,v){
         <input id="sr-lastdate" type="date" value="${TODAY}" style="width:130px">
         <button class="btn btn-primary btn-sm" onclick="addServiceReminder()">+ Reminder</button>
       </div>
+      <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--t3);line-height:24px">Presets:</span>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="prefillReminder('Licence Renewal',0,12)">📋 Licence (12mo)</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="prefillReminder('Insurance Renewal',0,12)">🛡 Insurance (12mo)</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="prefillReminder('COF / Roadworthy',0,12)">🔍 COF (12mo)</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="prefillReminder('Fire Extinguisher Service',0,12)">🧯 Fire Ext (12mo)</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="prefillReminder('Tracker Subscription',0,12)">📡 Tracker (12mo)</button>
+      </div>
     </div>`;
   if(reminders.length){
     reminders.forEach(r=>{
@@ -4245,6 +4268,11 @@ function renderEconomicsSub(box,v){
       <span>📋 Lic: <b>${formatR(getActiveAnnualByCategory(curVeh,'licence'))}/yr</b></span>
       <span>🔧 Maint: <b>R${(stats.totalKm>0?stats.totalServiceCost/stats.totalKm:3).toFixed(2)}/km</b></span>
       <span>🔥 Contingency: <b>${(new Date().getFullYear()-(+v.year||2000))>15?'R50k':'R'+(new Date().getFullYear()-(+v.year||2000)>10?'30k':'0')} Yr5</b></span>
+    </div>
+    <div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px">
+      <span style="color:var(--t3)">Resale value at Year 10:</span>
+      <input id="ec-keep-resale" type="number" placeholder="Auto (${(/gq|gu|patrol|land cruiser|70 series|defender|fj|bj|lj|hj/.test(v.name.toLowerCase())||(+v.year||2000)<2000)?'Classic — R'+Math.max(100000,Math.round(stats.purchasePrice*0.8)).toLocaleString():'R'+Math.round(stats.purchasePrice*0.15).toLocaleString()})" style="width:220px;padding:6px 8px;border-radius:6px;border:1px solid var(--b);background:var(--bg2);color:var(--t);font-size:12px">
+      <span style="font-size:10px;color:var(--t3)">Leave blank for auto-detect (classics hold/appreciate, standard vehicles depreciate to 15%)</span>
     </div>
   </div>`;
   // Add comparison form
