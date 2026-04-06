@@ -130,8 +130,8 @@ Think about every change like a senior developer shipping a personal product the
 
 | Resource | Current (Mar 2026) | Warning | Hard Limit | Action at Warning |
 |----------|-------------------|---------|------------|-------------------|
-| `index.html` lines | ~5,630 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
-| `index.html` size (KB) | ~370 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
+| `index.html` lines | ~5,833 | 7,000 | 10,000 | Split into modules: `app.js` (core), `vehicles.js`, `dashboard.js` — still vanilla, separate `<script>` tags |
+| `index.html` size (KB) | ~381 KB | 800 KB | 5 MB | Same split strategy. Minify stable code. |
 | Google Sheets (total) | 23 (21 active + 2 legacy) | 40 | 200 (per spreadsheet) | Group related sheets. Consider a second spreadsheet for archive data. |
 | Rows per sheet (largest) | ~100 (FuelLogs) | 5,000 | 10,000,000 | Archive old data to a yearly sheet (e.g. FuelLogs_2025). |
 | localStorage usage | ~50 KB | 3 MB | 5-10 MB | Prune stale cache. Only cache recent 30 days of time/fuel data. |
@@ -695,12 +695,17 @@ AI-driven 10-year TCO projection comparing current vehicle vs multiple alternati
 ### 12. Known Bugs / Tech Debt
 - CORS on POST: works with `text/plain` workaround; monitor for regression
 - ~~Service worker cache: must bump version in `sw.js` on every deploy~~ — **FIXED**: GitHub Actions auto-injects git SHA on deploy
+- ~~Boolean normalization: Google Sheets returns TRUE/FALSE strings~~ — **FIXED**: `loadAll()` normalizes all boolean fields to '1'/'0'
 - Duplicate items: double-clicking Save All can create duplicates (disable button during save)
 - Time blocks from capture don't appear if CORS fails (saved to localStorage, lost on refresh when Sheets overwrites)
 - Journal duplicate entries from double-click
 - Today's Board data stored in localStorage (per-device) — does NOT sync across devices via Sheets yet
 - `calDelete(eventId)` — backend supports `cal_delete` action but no frontend function wraps it yet
 - Legacy GQ_Patrol / GU_Patrol sheets still loaded in `loadAll()` — vestigial, should eventually be removed
+- **Offline sync fragile** — entries made without signal (camping, driving) show "Sync failed" and may be lost. Offline queue needs hardening.
+- **Capture slip scanning incomplete** — camera opens but OCR flow doesn't reliably complete from either Capture tab or Vehicle Fuel tab. Multi-photo flow needs work.
+- **AI Assistant action routing** — sometimes gives instructions instead of executing. May hallucinate non-existent UI sections. Needs better action dispatch.
+- **Partsoque expense totals overstated** — R34,914 in Parts/Spares includes parts for other vehicles (GU Patrol). Needs user-guided revision to split correctly.
 
 ### 13. Gym & Fitness Tracker (New Module)
 **Context**: Tijmen's wife is gym-conscious and both track fitness informally. A structured tracker would complement the meal planning module and daily accountability system.

@@ -232,7 +232,59 @@ Added to CLAUDE.md and enforced:
 
 ---
 
-## Architecture Snapshot (as of March 20, 2026)
+## Session: March 20-23, 2026 — Red Patrol Data Migration & Full Audit
+
+**What was built/done:**
+- Complete migration of Red Patrol.xlsx data to Google Sheets (123 items: 16 expenses, 58 parts, 48 todos, 1 incident)
+- Full audit across 4 data sources (Excel, Fuelly CSVs, iPhone Notes PDF) vs Google Sheets — 103 corrections applied
+- Added "Maintenance" expense category — separates repair work from parts stock and accessories
+- Boolean normalization fix — `True`/`False` strings from Sheets now converted to `1`/`0` on load (fixed incident "Open" display, insurance bar missing, todo checkboxes)
+- Vehicle todo completion date now editable (click the date to change)
+- AI Assistant improved — now executes actions (append/update) instead of just giving instructions
+- Fuel capture preview improvements — shows litres, total, station in preview card
+- Journal voice preservation — capture now only fixes spelling/grammar, doesn't rewrite user's voice
+- Offline queue improvements — pending items badge, retry on reconnect
+- Multi-photo capture support — accept multiple images in fuel/capture flow
+- Vehicle weight check type added to VehicleChecks
+
+**Data state after migration + audit (Red Patrol GQ TB42):**
+- FuelLogs: 66 entries (Fuelly-complete, May 2024 – Mar 2026)
+- VehicleExpenses: 22 entries (insurance, licence, parts orders, maintenance, accessories)
+- VehicleParts: 64 entries (3 Partsoque orders + iPhone notes parts, includes GU cross-compatible)
+- VehicleTodos: ~116 entries (open + historical done + sound wishlist + in-car items)
+- ServiceLogs: 6 entries (verified against Fuelly services.csv)
+- Incidents: 1 entry (Mercedes collision — resolved, R5,500 excess to Santam)
+- VehicleChecks: 3 entries (2 battery tests + 1 tyre depth from Aug 2025)
+
+**Key decisions:**
+- **Expense categories redesigned**: Insurance, Licence, Tracker, Tyres, Co-payment, Parts/Spares, Accessories, Maintenance, Tolls, Other. "Other" was a catch-all hiding R57K of mixed items. Now properly split.
+- **GU Patrol parts kept in GQ inventory** — cross-compatible between GQ and GU Nissan Patrol. User confirmed.
+- **Bodywork costs excluded from TCO** — Quantum R32,878 + Robert Hurn R35,536 + Cronje's R34,591 = R103,004. User explicitly said "we can ignore."
+- **Journal entries preserve user voice** — AI only fixes spelling/grammar, never rewrites. Tijmen's voice profile exists for AI-generated content only.
+- **Boolean normalization at load time** — Google Sheets returns `TRUE`/`FALSE` as strings. `loadAll()` now normalizes all boolean fields to `'1'`/`'0'` across every sheet.
+
+**Migration technique:**
+- Python scripts (`migrate_red_patrol.py`, `audit_fix.py`) posting directly to Apps Script API
+- Custom redirect handler needed: Apps Script returns 302 on POST, must follow as GET to read response
+- Key: `{"action":"append","sheet":"SheetName","row":{...}}` with `Content-Type: text/plain`
+
+**Bugs found and fixed:**
+- Boolean normalization (True/False vs 1/0) — affected incident resolved status, insurance recurring display, todo checkboxes
+- Insurance bar not rendering in cost breakdown — `width: 0%` because recurring cost calc couldn't match boolean
+- AI Assistant hallucinating non-existent UI sections ("Documents/Records") and creating duplicates
+- Offline entries made while camping lost on sync — offline queue needs hardening
+
+**Known issues carried forward:**
+- Partsoque order totals (R34,914) include parts for other vehicles — needs revision per user instruction
+- Capture tab slip scanning not reliably working (camera opens but OCR flow incomplete)
+- Offline sync still fragile — camping weekend entries showed "Sync failed"
+- AI Assistant still needs work on action routing reliability
+
+**Commits:** cf43429 → 81df67f (6 commits)
+
+---
+
+## Architecture Snapshot (as of March 23, 2026)
 
 | Component | Technology | Location |
 |---|---|---|
@@ -244,9 +296,8 @@ Added to CLAUDE.md and enforced:
 | Deployment | GitHub Actions → Pages + clasp → Apps Script | `.github/workflows/deploy.yml` |
 | Offline | Service Worker + localStorage | `sw.js` with auto-versioning |
 
-**Total commits:** 89+
-**Total lines of code:** ~5,630 in index.html (single file)
+**Total commits:** 95+
+**Total lines of code:** ~5,833 in index.html (~381 KB)
 **Google Sheets:** 23 active sheets (21 active + 2 legacy)
-**Google Sheets:** 22 active sheets (20 active + 2 legacy)
 **API actions:** 10 (read, ping, append, write, update, delete, upsert, calendar, cal_create, cal_delete, emails)
 **Vehicle sub-tabs:** 9 (Dashboard, Fuel, Services, Costs, Economics, Checks, Todos, Parts, Trips)
